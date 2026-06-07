@@ -28,7 +28,7 @@ from lib_pull import (
     load_env, get_supabase_creds, get_active_airports,
     insert_snapshots, write_feed_run, load_raw, utc_now, log,
 )
-from pull_faa_nas_status import parse_faa_status
+from pull_faa_nas_status import parse_faa_event
 
 SOURCE_IDS = {
     'faa': 'faa_nas_status',
@@ -168,13 +168,25 @@ def main() -> None:
         return
 
     # ── Load caches ───────────────────────────────────────────────────
-    faa_cache: dict = load_raw('faa_nas_status') or {}   # {IATA: raw FAA response}
+    # faa_nas_status.json is the raw list from nasstatus.faa.gov/api/airport-events.
+    # Index it by airportId for O(1) lookup per tracked airport.
+    _faa_raw = load_raw('faa_nas_status') or []
+    faa_events_by_iata: dict[str, dict] = {}
+    if isinstance(_faa_raw, list):
+        for ev in _faa_raw:
+            aid = (ev.get('airportId') or ev.get('airport') or '').strip().upper()
+            if aid:
+                faa_events_by_iata[aid] = ev
+    elif isinstance(_faa_raw, dict):
+        # Older cache format: {IATA: event_dict} — still usable
+        faa_events_by_iata = {k.upper(): v for k, v in _faa_raw.items()}
+
     metar_cache: dict = load_raw('metar_parsed') or {}   # {ICAO: parsed METAR dict}
-    taf_cache: dict = load_raw('taf_parsed') or {}       # {ICAO: parsed TAF dict}
-    nws_cache: dict = load_raw('nws_forecasts') or {}    # {airport_id: NWS summary}
+    taf_cache: dict   = load_raw('taf_parsed') or {}     # {ICAO: parsed TAF dict}
+    nws_cache: dict   = load_raw('nws_forecasts') or {}  # {airport_id: NWS summary}
 
     log('caches_loaded', {
-        'faa': len(faa_cache),
+        'faa_events': len(faa_events_by_iata),
         'metar': len(metar_cache),
         'taf': len(taf_cache),
         'nws': len(nws_cache),
@@ -188,11 +200,9 @@ def main() -> None:
         iata = (apt.get('iata') or '').upper()
         icao = (apt.get('icao') or '').upper()
 
-        # FAA cache keyed by IATA, contains the raw API response
-        faa_raw = faa_cache.get(iata)
-        faa_fields: dict | None = None
-        if faa_raw:
-            faa_fields = parse_faa_status(faa_raw, apt)
+        # Look up the FAA event for this airport (None = no active program → NORMAL)
+        faa_event = faa_events_by_iata.get(iata)
+        faa_fields: dict | None = parse_faa_event(faa_event, apt) if faa_events_by_iata else None
 
         metar_data = metar_cache.get(icao)
         taf_data   = taf_cache.get(icao)
@@ -225,7 +235,7 @@ def main() -> None:
         log('snapshot_write_error', write_err)
 
     # Write a feed_run for each source that contributed data
-    if faa_cache:
+    if faa_events_by_iata:
         write_feed_run(sb_url, sb_key, SOURCE_IDS['faa'],
                        write_ok, len(snapshots), write_err, dry_run=args.dry_run)
     if metar_cache:

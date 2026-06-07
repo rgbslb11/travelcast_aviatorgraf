@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
-"""Pull FAA NAS airport status and write airport_status_snapshots rows.
+"""Pull FAA NAS airport events and write airport_status_snapshots rows.
 
-Source:  https://soa.smext.faa.gov/asws/api/airport/status/{IATA}
+Source:  https://nasstatus.faa.gov/api/airport-events
+         Fetched ONCE per run — returns a JSON array of all active airport events.
+         Retired endpoint (NXDOMAIN): soa.smext.faa.gov/asws/api/airport/status/{IATA}
 Auth:    None (public API, no key required)
 Writes:  airport_status_snapshots (snapshot_source='live')
+         data/raw/faa_nas_status.json (raw API response)
          feed_runs (source_system_id='faa_nas_status')
 Doctrine: FAA NAS Status = Current Operational Impact (operational truth)
 
@@ -20,92 +23,164 @@ from lib_pull import (
     insert_snapshots, write_feed_run, http_get_json, save_raw, utc_now, log,
 )
 
-FAA_STATUS_BASE = 'https://soa.smext.faa.gov/asws/api/airport/status/{iata}'
+FAA_NAS_EVENTS_URL = 'https://nasstatus.faa.gov/api/airport-events'
 SOURCE_ID = 'faa_nas_status'
 
+# Avg-delay threshold above which groundDelay escalates from Amber to Red.
+GDP_RED_THRESHOLD_MINUTES = 45
 
-def parse_faa_status(raw: dict, airport: dict) -> dict:
-    """Map FAA airport status API response to airport_status_snapshots fields."""
-    has_delay = raw.get('Delay', False)
-    status_list = raw.get('Status', [])
 
-    current_delay_type = 'None'
-    current_status_code = 'NORMAL'
-    current_reason = None
-    avg_delay: int | None = None
-    max_delay: int | None = None
-    current_impact_color: str | None = None
+def _parse_minutes(val) -> int | None:
+    """Parse a delay-minutes value that may be int, float, or a string like '63' or '27.0'."""
+    if val is None:
+        return None
+    try:
+        # Use float() first to handle '27.0', then truncate to int
+        v = int(float(str(val).split()[0]))
+        return v if v > 0 else None
+    except (ValueError, TypeError):
+        return None
 
-    if has_delay and status_list:
-        s = status_list[0]
-        raw_type = (s.get('Type') or '').strip()
-        raw_reason = (s.get('Reason') or '').strip()
-        current_delay_type = raw_type or 'Delay'
-        current_reason = raw_reason or None
 
-        lo = raw_type.lower()
-        if 'ground delay' in lo:
-            current_status_code = 'GROUND_DELAY_PROGRAM'
-            current_impact_color = 'Red'
-        elif 'ground stop' in lo:
-            current_status_code = 'GROUND_STOP'
-            current_impact_color = 'Red'
-        elif 'closure' in lo:
-            current_status_code = 'CLOSURE'
-            current_impact_color = 'Red'
-        elif 'departure' in lo or 'arrival' in lo:
-            current_status_code = 'DELAY'
-            current_impact_color = 'Amber'
-        else:
-            current_status_code = 'DELAY'
-            current_impact_color = 'Amber'
+def _extract_reason(obj: dict) -> str | None:
+    """Extract a human-readable reason string from a FAA program sub-object."""
+    for key in ('reason', 'impactingCondition', 'condition', 'rootCause'):
+        val = obj.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+        if isinstance(val, dict):
+            # Some fields return nested objects; try text/name sub-keys
+            for sub in ('text', 'name', 'value', 'description'):
+                inner = val.get(sub)
+                if isinstance(inner, str) and inner.strip():
+                    return inner.strip()
+    return None
 
-        try:
-            v = int(s.get('AvgDelay') or 0)
-            if v > 0:
-                avg_delay = v
-        except (ValueError, TypeError):
-            pass
-        try:
-            v = int(s.get('MaxDelay') or 0)
-            if v > 0:
-                max_delay = v
-        except (ValueError, TypeError):
-            pass
 
-    delay_parts = []
-    if current_status_code != 'NORMAL':
-        delay_parts.append(f'{current_delay_type} active')
-        if avg_delay:
-            delay_parts.append(f'avg {avg_delay} min')
-        if max_delay:
-            delay_parts.append(f'max {max_delay} min')
-        if current_reason:
-            delay_parts.append(f'({current_reason})')
-    delay_summary = '. '.join(delay_parts) + '.' if delay_parts else None
+def _build_delay_summary(delay_type: str, avg: int | None, max_: int | None,
+                         reason: str | None) -> str | None:
+    parts = [f'{delay_type} active']
+    if avg:
+        parts.append(f'avg {avg} min')
+    if max_:
+        parts.append(f'max {max_} min')
+    if reason:
+        parts.append(f'({reason})')
+    return '. '.join(parts) + '.' if parts else None
 
-    return {
+
+def parse_faa_event(event: dict | None, airport: dict) -> dict:
+    """Map one FAA airport-events object to airport_status_snapshots fields.
+
+    If event is None, the airport has no active FAA/NAS program — NORMAL snapshot.
+    Program priority: airportClosure > groundStop > groundDelay > departureDelay / arrivalDelay.
+    """
+    snap: dict = {
         'airport_id': airport['airport_id'],
         'snapshot_source': 'live',
         'generated_at': utc_now(),
         'freshness_status': 'fresh',
-        'current_delay_type': current_delay_type,
-        'current_status_code': current_status_code,
-        'current_reason': current_reason,
-        'avg_delay_minutes': avg_delay,
-        'max_delay_minutes': max_delay,
-        'delay_summary': delay_summary,
-        'current_impact_color': current_impact_color,
+        'current_delay_type': 'None',
+        'current_status_code': 'NORMAL',
+        'current_reason': 'No active FAA/NAS event',
+        'avg_delay_minutes': None,
+        'max_delay_minutes': None,
+        'delay_summary': None,
+        'arrival_runway': None,
+        'departure_runway': None,
+        'aar': None,
+        'current_impact_color': None,
         'source_summary': 'Current Operational Impact — FAA NAS Status',
     }
 
+    if event is None:
+        return snap
+
+    # ── airportConfig (runways / AAR) — independent of delay programs ──
+    cfg = event.get('airportConfig') or {}
+    if cfg:
+        arr_rwy = (cfg.get('arrivalRunwayConfig') or cfg.get('arrivalRunways')
+                   or cfg.get('arrivalRunway') or cfg.get('arrRunways'))
+        dep_rwy = (cfg.get('departureRunwayConfig') or cfg.get('departureRunways')
+                   or cfg.get('departureRunway') or cfg.get('depRunways'))
+        aar_val = _parse_minutes(cfg.get('arrivalRate') or cfg.get('aar'))
+        if arr_rwy:
+            snap['arrival_runway'] = str(arr_rwy).strip()
+        if dep_rwy:
+            snap['departure_runway'] = str(dep_rwy).strip()
+        if aar_val:
+            snap['aar'] = aar_val
+
+    # ── Program priority: closure → groundStop → groundDelay → delay ──
+
+    closure = event.get('airportClosure')
+    if closure and closure is not None and closure is not False:
+        snap['current_delay_type'] = 'Airport Closure'
+        snap['current_status_code'] = 'AIRPORT_CLOSURE'
+        snap['current_reason'] = _extract_reason(closure if isinstance(closure, dict) else {})
+        snap['current_impact_color'] = 'Red'
+        snap['delay_summary'] = _build_delay_summary(
+            'Airport Closure', None, None, snap['current_reason']
+        )
+        return snap
+
+    gs = event.get('groundStop')
+    if gs and gs is not None and gs is not False:
+        obj = gs if isinstance(gs, dict) else {}
+        reason = _extract_reason(obj)
+        snap['current_delay_type'] = 'Ground Stop'
+        snap['current_status_code'] = 'GROUND_STOP'
+        snap['current_reason'] = reason
+        snap['current_impact_color'] = 'Red'
+        snap['delay_summary'] = _build_delay_summary('Ground Stop', None, None, reason)
+        return snap
+
+    gd = event.get('groundDelay')
+    if gd and gd is not None and gd is not False:
+        obj = gd if isinstance(gd, dict) else {}
+        avg = _parse_minutes(obj.get('averageDelay') or obj.get('avgDelay'))
+        max_ = _parse_minutes(obj.get('maximumDelay') or obj.get('maxDelay'))
+        reason = _extract_reason(obj)
+        color = 'Red' if (avg is not None and avg >= GDP_RED_THRESHOLD_MINUTES) else 'Amber'
+        snap['current_delay_type'] = 'Ground Delay Program'
+        snap['current_status_code'] = 'GROUND_DELAY_PROGRAM'
+        snap['current_reason'] = reason
+        snap['avg_delay_minutes'] = avg
+        snap['max_delay_minutes'] = max_
+        snap['current_impact_color'] = color
+        snap['delay_summary'] = _build_delay_summary('Ground Delay Program', avg, max_, reason)
+        return snap
+
+    # Arrival and departure delays — take worst / first present
+    for prog_key, label in (('arrivalDelay', 'Arrival Delay'),
+                            ('departureDelay', 'Departure Delay')):
+        prog = event.get(prog_key)
+        if prog and prog is not None and prog is not False:
+            obj = prog if isinstance(prog, dict) else {}
+            avg = _parse_minutes(obj.get('averageDelay') or obj.get('avgDelay') or obj.get('delay'))
+            max_ = _parse_minutes(obj.get('maximumDelay') or obj.get('maxDelay'))
+            reason = _extract_reason(obj)
+            # Escalate to Red only if the reported delay is severe (>= 60 min)
+            color = 'Red' if (avg is not None and avg >= 60) else 'Amber'
+            snap['current_delay_type'] = label
+            snap['current_status_code'] = 'DELAY'
+            snap['current_reason'] = reason
+            snap['avg_delay_minutes'] = avg
+            snap['max_delay_minutes'] = max_
+            snap['current_impact_color'] = color
+            snap['delay_summary'] = _build_delay_summary(label, avg, max_, reason)
+            return snap
+
+    # No active program — leave NORMAL defaults (current_reason already set)
+    return snap
+
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description='Pull FAA NAS airport status')
+    parser = argparse.ArgumentParser(description='Pull FAA NAS airport events')
     parser.add_argument('--dry-run', action='store_true',
                         help='Fetch data but do not write to Supabase')
     parser.add_argument('--limit', type=int, default=None,
-                        help='Limit number of airports processed')
+                        help='Limit number of tracked airports processed')
     args = parser.parse_args()
 
     load_env()
@@ -119,7 +194,7 @@ def main() -> None:
         if not args.dry_run:
             sys.exit(1)
 
-    # Load airports from Supabase
+    # ── Load tracked airports from Supabase ───────────────────────────
     airports: list[dict] = []
     if sb_url and sb_key:
         try:
@@ -134,54 +209,88 @@ def main() -> None:
                        'No airports loaded from Supabase', dry_run=args.dry_run)
         return
 
-    snapshots: list[dict] = []
-    raw_all: dict = {}
-    fetch_errors: list[dict] = []
+    # ── Fetch FAA NAS events ONCE ─────────────────────────────────────
+    raw_events: list[dict] = []
+    endpoint_ok = False
+    fetch_error: str | None = None
+    try:
+        data = http_get_json(FAA_NAS_EVENTS_URL)
+        if isinstance(data, list):
+            raw_events = data
+        elif isinstance(data, dict):
+            # Some versions wrap the list in an envelope
+            raw_events = (data.get('items') or data.get('airports')
+                          or data.get('events') or [data])
+        endpoint_ok = True
+        log('faa_events_fetched', {
+            'url': FAA_NAS_EVENTS_URL,
+            'total_events': len(raw_events),
+        })
+    except Exception as e:
+        fetch_error = str(e)
+        log('faa_events_fetch_error', {'url': FAA_NAS_EVENTS_URL, 'error': fetch_error})
+        write_feed_run(sb_url, sb_key, SOURCE_ID, False, 0, fetch_error, dry_run=args.dry_run)
+        return
 
+    # Save raw response regardless of dry-run
+    save_raw('faa_nas_status', raw_events)
+    log('raw_saved', {'file': 'data/raw/faa_nas_status.json', 'events': len(raw_events)})
+
+    # ── Index events by airportId (IATA) ──────────────────────────────
+    events_by_iata: dict[str, dict] = {}
+    for ev in raw_events:
+        aid = (ev.get('airportId') or ev.get('airport') or ev.get('iata') or '').strip().upper()
+        if aid:
+            events_by_iata[aid] = ev
+
+    tracked_iatas = {(a.get('iata') or '').upper() for a in airports if a.get('iata')}
+    matched = tracked_iatas & set(events_by_iata)
+
+    log('event_index_built', {
+        'total_events_in_response': len(events_by_iata),
+        'tracked_airports': len(tracked_iatas),
+        'tracked_with_active_event': len(matched),
+        'tracked_with_no_event': len(tracked_iatas) - len(matched),
+    })
+
+    # ── Build one snapshot per tracked airport ────────────────────────
+    snapshots: list[dict] = []
     for apt in airports:
         iata = (apt.get('iata') or '').strip().upper()
         if not iata:
             continue
-        url = FAA_STATUS_BASE.format(iata=iata)
-        try:
-            raw = http_get_json(url)
-            raw_all[iata] = raw
-            snap = parse_faa_status(raw, apt)
-            snapshots.append(snap)
-            log('faa_fetched', {
+        event = events_by_iata.get(iata)  # None if no active program
+        snap = parse_faa_event(event, apt)
+        snapshots.append(snap)
+
+        if args.dry_run:
+            log('snapshot_dry_run', {
                 'airport': iata,
                 'delay_type': snap['current_delay_type'],
                 'status_code': snap['current_status_code'],
+                'avg_delay': snap['avg_delay_minutes'],
                 'impact': snap['current_impact_color'],
             })
-        except Exception as e:
-            fetch_errors.append({'airport': iata, 'error': str(e)})
-            log('faa_fetch_error', {'airport': iata, 'error': str(e)})
-
-    # Save raw cache regardless of dry-run
-    if raw_all:
-        save_raw('faa_nas_status', raw_all)
-        log('raw_saved', {'file': 'data/raw/faa_nas_status.json', 'airports': len(raw_all)})
 
     log('pull_summary', {
         'snapshots_built': len(snapshots),
-        'fetch_errors': len(fetch_errors),
+        'endpoint_ok': endpoint_ok,
         'dry_run': args.dry_run,
     })
 
-    # Write to Supabase (or dry-run print)
-    success = False
+    # ── Write to Supabase (or dry-run) ────────────────────────────────
+    write_ok = False
     write_error: str | None = None
     try:
         insert_snapshots(sb_url, sb_key, snapshots, dry_run=args.dry_run)
-        success = True
+        write_ok = True
     except Exception as e:
         write_error = str(e)
         log('snapshot_write_error', write_error)
 
     write_feed_run(
         sb_url, sb_key, SOURCE_ID,
-        success=success,
+        success=write_ok,
         records=len(snapshots),
         error=write_error,
         dry_run=args.dry_run,

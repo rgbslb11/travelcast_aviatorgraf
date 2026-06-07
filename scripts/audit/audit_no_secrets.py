@@ -11,8 +11,12 @@ import base64, json, re, sys
 
 ROOT = Path(__file__).resolve().parents[2]
 
-# Files entirely excluded from secret scanning
+# Files entirely excluded from secret scanning.
+# .env and .env.local are gitignored and are the correct place for real secrets.
+# Scanning them would produce false positives — they are intentionally excluded.
 IGNORE = {
+    '.env',
+    '.env.local',
     '.env.example',
     'templates/env.example.template',
 }

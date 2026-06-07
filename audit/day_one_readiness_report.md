@@ -85,7 +85,7 @@ Ready for Day One TravelCast Prep: **Yes — demo mode verified, Supabase live m
 | Script | Purpose | Writes |
 |---|---|---|
 | `scripts/pull/lib_pull.py` | Shared utilities: env load, Supabase REST, feed_runs, HTTP, raw cache | — |
-| `scripts/pull/pull_faa_nas_status.py` | FAA NAS per-airport status → operational snapshot fields | airport_status_snapshots, feed_runs |
+| `scripts/pull/pull_faa_nas_status.py` | FAA NAS airport-events (bulk, once per run) → operational snapshot fields | airport_status_snapshots, feed_runs |
 | `scripts/pull/pull_aviationweather_metar_taf.py` | METAR + TAF bulk fetch → local cache | data/raw/, feed_runs |
 | `scripts/pull/pull_nws_forecasts.py` | NWS gridpoint forecast → local cache | data/raw/, feed_runs |
 | `scripts/pull/pull_atcscc_ops_plan.py` | NAS status XML + ATCSCC advisories → local cache | data/raw/, feed_runs |
@@ -104,14 +104,23 @@ Ready for Day One TravelCast Prep: **Yes — demo mode verified, Supabase live m
 - [x] No frontend changes made
 - [x] Demo fallback preserved
 
-### Audit results (2026-06-07)
+### FAA NAS endpoint (updated 2026-06-07)
 
-- [x] No-secret audit: PASSED
+| | |
+|---|---|
+| **Active endpoint** | `https://nasstatus.faa.gov/api/airport-events` — fetched once per run, returns JSON array |
+| **Retired endpoint** | `soa.smext.faa.gov/asws/api/airport/status/{IATA}` — NXDOMAIN, removed |
+| **Field notes** | `avgDelay` is a float (e.g. 27.0); runway config in `arrivalRunwayConfig` / `departureRunwayConfig`; AAR in `arrivalRate` |
+| **Live confirmed** | 2026-06-07 — DFW GDP detected (avg 27 min, max 145 min); 11 events in response |
+
+### Audit results (2026-06-07, post endpoint fix)
+
+- [x] No-secret audit: PASSED (`.env` correctly excluded — gitignored, right place for secrets)
 - [x] Supabase config audit: PASSED
 - [x] Source doctrine audit: PASSED
 - [x] JSON/GeoJSON audit: PASSED
 - [x] File tree audit: PASSED
-- [x] All 7 pull scripts: syntax OK
+- [x] All 7 pull scripts: syntax OK (`py_compile` clean)
 
 ### Safe to proceed to production live-data testing?
 
