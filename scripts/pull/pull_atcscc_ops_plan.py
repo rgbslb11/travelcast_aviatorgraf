@@ -29,12 +29,16 @@ SOURCE_ID       = 'atcscc_advisories'
 
 
 def _xml_text(node, *tags: str) -> str:
-    """Return the stripped text of the first matching tag in node, or ''."""
-    import xml.etree.ElementTree as ET
+    """Return the stripped text of the first matching tag in node, or ''.
+
+    Tries each tag variant (original, upper, lower) with explicit is-not-None
+    checks to avoid the ElementTree DeprecationWarning from truth-value testing.
+    """
     for tag in tags:
-        el = node.find(tag) or node.find(tag.upper()) or node.find(tag.lower())
-        if el is not None and el.text:
-            return el.text.strip()
+        for variant in (tag, tag.upper(), tag.lower()):
+            el = node.find(variant)
+            if el is not None and el.text:
+                return el.text.strip()
     return ''
 
 

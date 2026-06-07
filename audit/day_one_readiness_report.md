@@ -113,36 +113,36 @@ Ready for Day One TravelCast Prep: **Yes — demo mode verified, Supabase live m
 | **Field notes** | `avgDelay` is a float (e.g. 27.0); runway config in `arrivalRunwayConfig` / `departureRunwayConfig`; AAR in `arrivalRate` |
 | **Live confirmed** | 2026-06-07 — DFW GDP detected (avg 27 min, max 145 min); 11 events in response |
 
-### Audit results (2026-06-07, post endpoint fix)
+### Live run results (2026-06-07)
 
-- [x] No-secret audit: PASSED (`.env` correctly excluded — gitignored, right place for secrets)
+| Run | Result |
+|---|---|
+| `pull_all.py --dry-run` | PASSED — 5 scripts, 0 failed |
+| `pull_all.py` (live) | PASSED — 5 scripts, 0 failed, 10 combined snapshots written to Supabase |
+| `pull_faa_nas_status.py --dry-run --limit 3` | PASSED — DFW GDP avg 27 min / max 145 min parsed correctly |
+| `pull_atcscc_ops_plan.py --dry-run` | PASSED — 5 advisories parsed from `nasstatus.faa.gov/api/airport-status-information`; 0 from advisory sub-path (expected — endpoint returns NOTAM-style closures, not CDP format) |
+
+### Audit results (2026-06-07, post live run + ATCSCC cleanup)
+
+- [x] No-secret audit: PASSED (`.env` excluded — gitignored, right place for secrets)
 - [x] Supabase config audit: PASSED
 - [x] Source doctrine audit: PASSED
 - [x] JSON/GeoJSON audit: PASSED
 - [x] File tree audit: PASSED
-- [x] All 7 pull scripts: syntax OK (`py_compile` clean)
+- [x] All 7 pull scripts: `py_compile` clean, zero DeprecationWarnings
 
-### Safe to proceed to production live-data testing?
+### ATCSCC parser note
 
-**Yes — with one prerequisite:** the user's `.env` must contain `SUPABASE_SERVICE_ROLE_KEY`
-(the service-role key, not the anon key). The anon key is already in `js/config.js`
-for frontend read access. The service-role key is needed for write operations
-(inserting airport_status_snapshots and feed_runs rows).
+`pull_atcscc_ops_plan.py` fetches `nasstatus.faa.gov/api/airport-status-information` (XML).
+The current response contains `Advisory` elements (NOTAM-style airport closures for GA traffic),
+not `Airport`/`GDP` nodes. The parser handles both formats.
+`advisory_count = 5` on 2026-06-07; count varies with active NAS events.
+The `advisoryUrl` on live GDP events (from `airport-events`) can be followed for full ATCSCC text.
 
-**Recommended first run:**
-```bash
-# From the project root, with .env configured:
-python scripts/pull/pull_faa_nas_status.py --dry-run --limit 3
-# Confirm JSON log output shows airports loaded and snapshots built
-python scripts/pull/pull_faa_nas_status.py --limit 3
-# Confirm Supabase Airport Status Board updates in the app
-```
+### Safe to proceed?
 
-**Full pull:**
-```bash
-python scripts/pull/pull_all.py --dry-run
-python scripts/pull/pull_all.py
-```
+**Phase 4 complete and live-verified.** `pull_all.py` wrote 10 snapshots across all sources.
+Next: Phase 5 — SQL views upgrade.
 
 ## Phase Completion Status
 
