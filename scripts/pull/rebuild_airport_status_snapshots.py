@@ -26,8 +26,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent))
 from lib_pull import (
     load_env, get_supabase_creds, get_active_airports,
-    insert_snapshots, write_feed_run, load_raw, overall_impact, utc_now, log,
+    insert_snapshots, write_feed_run, load_raw, utc_now, log,
 )
+from pull_faa_nas_status import parse_faa_status
 
 SOURCE_IDS = {
     'faa': 'faa_nas_status',
@@ -40,7 +41,6 @@ def build_snapshot(airport: dict, faa: dict | None, metar: dict | None,
                    taf: dict | None, nws: dict | None) -> dict:
     """Combine data from all sources into one airport_status_snapshots row."""
     aid = airport['airport_id']
-    icao = airport.get('icao', '')
 
     snap: dict = {
         'airport_id': aid,
@@ -192,7 +192,6 @@ def main() -> None:
         faa_raw = faa_cache.get(iata)
         faa_fields: dict | None = None
         if faa_raw:
-            from pull_faa_nas_status import parse_faa_status
             faa_fields = parse_faa_status(faa_raw, apt)
 
         metar_data = metar_cache.get(icao)

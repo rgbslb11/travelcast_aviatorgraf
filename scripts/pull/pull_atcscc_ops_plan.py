@@ -14,7 +14,7 @@ Usage:
   python pull_atcscc_ops_plan.py [--dry-run]
 """
 from __future__ import annotations
-import argparse, json, sys
+import argparse, sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -26,6 +26,16 @@ from lib_pull import (
 NAS_STATUS_URL  = 'https://nasstatus.faa.gov/api/airport-status-information'
 ATCSCC_ADV_URL  = 'https://www.fly.faa.gov/adv/adv_str.xml'
 SOURCE_ID       = 'atcscc_advisories'
+
+
+def _xml_text(node, *tags: str) -> str:
+    """Return the stripped text of the first matching tag in node, or ''."""
+    import xml.etree.ElementTree as ET
+    for tag in tags:
+        el = node.find(tag) or node.find(tag.upper()) or node.find(tag.lower())
+        if el is not None and el.text:
+            return el.text.strip()
+    return ''
 
 
 def _parse_nas_xml(xml_text: str) -> list[dict]:
@@ -47,34 +57,25 @@ def _parse_nas_xml(xml_text: str) -> list[dict]:
     )
 
     for node in airport_nodes:
-        def t(tag: str) -> str:
-            el = node.find(tag) or node.find(tag.upper()) or node.find(tag.lower())
-            return el.text.strip() if el is not None and el.text else ''
-
-        arpt = t('ARPT') or t('ICAOCode') or t('Airport') or node.get('ID', '')
-        delay_type = t('Type') or t('ProgramType') or t('DelayType') or ''
-        reason = t('Reason') or t('AdvisoryText') or ''
-        avg = t('Avg') or t('AvgDelay') or ''
-        mx = t('Max') or t('MaxDelay') or ''
-
+        arpt = _xml_text(node, 'ARPT', 'ICAOCode', 'Airport') or node.get('ID', '')
         if arpt:
             advisories.append({
                 'airport': arpt.upper(),
-                'type': delay_type,
-                'reason': reason,
-                'avg_delay': avg,
-                'max_delay': mx,
+                'type': _xml_text(node, 'Type', 'ProgramType', 'DelayType'),
+                'reason': _xml_text(node, 'Reason', 'AdvisoryText'),
+                'avg_delay': _xml_text(node, 'Avg', 'AvgDelay'),
+                'max_delay': _xml_text(node, 'Max', 'MaxDelay'),
             })
 
     # Also check for Initiative / Advisory elements (ATCSCC advisory list format)
     for node in root.findall('.//Advisory') + root.findall('.//Initiative'):
-        adv_type = node.get('Type', '') or (node.find('Type') or ET.Element('')).text or ''
-        text = (node.find('Advisory_Text') or node.find('Text') or ET.Element('')).text or ''
-        airport = (node.find('Airport') or ET.Element('')).text or ''
+        adv_type = node.get('Type', '') or _xml_text(node, 'Type')
+        text = _xml_text(node, 'Advisory_Text', 'Text')
+        airport = _xml_text(node, 'Airport')
         advisories.append({
-            'airport': airport.strip().upper() if airport else 'SYSTEM',
+            'airport': airport.upper() if airport else 'SYSTEM',
             'type': adv_type.strip(),
-            'reason': text.strip()[:200],
+            'reason': text[:200],
             'avg_delay': '',
             'max_delay': '',
         })

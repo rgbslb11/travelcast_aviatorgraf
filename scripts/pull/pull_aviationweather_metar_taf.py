@@ -15,6 +15,7 @@ Usage:
 """
 from __future__ import annotations
 import argparse, sys
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -47,7 +48,6 @@ def parse_metar(obj: dict) -> dict:
     obs_at: str | None = None
     obs_time = obj.get('obsTime') or obj.get('timeObs')
     if obs_time:
-        from datetime import datetime, timezone
         try:
             obs_at = datetime.fromtimestamp(int(obs_time), tz=timezone.utc).isoformat()
         except (ValueError, TypeError, OSError):

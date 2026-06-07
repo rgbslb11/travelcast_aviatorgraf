@@ -14,7 +14,7 @@ Usage:
   python pull_nws_forecasts.py [--dry-run] [--limit N] [--clear-gridpoint-cache]
 """
 from __future__ import annotations
-import argparse, json, os, sys, time
+import argparse, os, sys, time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))

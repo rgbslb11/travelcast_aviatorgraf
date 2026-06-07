@@ -60,16 +60,18 @@ def parse_faa_status(raw: dict, airport: dict) -> dict:
             current_status_code = 'DELAY'
             current_impact_color = 'Amber'
 
-        for field, dest in (('AvgDelay', 'avg'), ('MaxDelay', 'max')):
-            try:
-                v = int(s.get(field) or 0)
-                if v > 0:
-                    if field == 'AvgDelay':
-                        avg_delay = v
-                    else:
-                        max_delay = v
-            except (ValueError, TypeError):
-                pass
+        try:
+            v = int(s.get('AvgDelay') or 0)
+            if v > 0:
+                avg_delay = v
+        except (ValueError, TypeError):
+            pass
+        try:
+            v = int(s.get('MaxDelay') or 0)
+            if v > 0:
+                max_delay = v
+        except (ValueError, TypeError):
+            pass
 
     delay_parts = []
     if current_status_code != 'NORMAL':
