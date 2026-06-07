@@ -6,3 +6,5 @@ node_modules/
 __pycache__/
 *.pyc
 .vscode/settings.json
+data/raw/*.json
+data/raw/*.xml

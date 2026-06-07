@@ -78,12 +78,69 @@ Ready for Day One TravelCast Prep: **Yes — demo mode verified, Supabase live m
 - Aviation Hazards, RouteCast, FAA Ops panels will show live data once pull engine populates Supabase
 - No browser-side changes expected for Phase 4
 
+## Phase 4 — Pull Engine (completed 2026-06-07)
+
+### Scripts built
+
+| Script | Purpose | Writes |
+|---|---|---|
+| `scripts/pull/lib_pull.py` | Shared utilities: env load, Supabase REST, feed_runs, HTTP, raw cache | — |
+| `scripts/pull/pull_faa_nas_status.py` | FAA NAS per-airport status → operational snapshot fields | airport_status_snapshots, feed_runs |
+| `scripts/pull/pull_aviationweather_metar_taf.py` | METAR + TAF bulk fetch → local cache | data/raw/, feed_runs |
+| `scripts/pull/pull_nws_forecasts.py` | NWS gridpoint forecast → local cache | data/raw/, feed_runs |
+| `scripts/pull/pull_atcscc_ops_plan.py` | NAS status XML + ATCSCC advisories → local cache | data/raw/, feed_runs |
+| `scripts/pull/rebuild_airport_status_snapshots.py` | Merges all caches → comprehensive snapshots | airport_status_snapshots, feed_runs |
+| `scripts/pull/pull_all.py` | Subprocess orchestrator for all above | — |
+
+### Guardrails verified
+
+- [x] All secrets via environment variables / `.env` — none hardcoded
+- [x] `SUPABASE_SERVICE_ROLE_KEY` only in `lib_pull.py` (server-side), never frontend
+- [x] NWS User-Agent from `NWS_USER_AGENT` env var — not hardcoded
+- [x] `--dry-run` flag on every script (no Supabase writes, prints what would be written)
+- [x] `--limit N` flag on every script
+- [x] `feed_runs` written on every execution (success or failure)
+- [x] `data/raw/` created for raw cache; `*.json` and `*.xml` gitignored
+- [x] No frontend changes made
+- [x] Demo fallback preserved
+
+### Audit results (2026-06-07)
+
+- [x] No-secret audit: PASSED
+- [x] Supabase config audit: PASSED
+- [x] Source doctrine audit: PASSED
+- [x] JSON/GeoJSON audit: PASSED
+- [x] File tree audit: PASSED
+- [x] All 7 pull scripts: syntax OK
+
+### Safe to proceed to production live-data testing?
+
+**Yes — with one prerequisite:** the user's `.env` must contain `SUPABASE_SERVICE_ROLE_KEY`
+(the service-role key, not the anon key). The anon key is already in `js/config.js`
+for frontend read access. The service-role key is needed for write operations
+(inserting airport_status_snapshots and feed_runs rows).
+
+**Recommended first run:**
+```bash
+# From the project root, with .env configured:
+python scripts/pull/pull_faa_nas_status.py --dry-run --limit 3
+# Confirm JSON log output shows airports loaded and snapshots built
+python scripts/pull/pull_faa_nas_status.py --limit 3
+# Confirm Supabase Airport Status Board updates in the app
+```
+
+**Full pull:**
+```bash
+python scripts/pull/pull_all.py --dry-run
+python scripts/pull/pull_all.py
+```
+
 ## Phase Completion Status
 
 - [x] Phase 1 — Bootstrap / file tree
 - [x] Phase 2 — Demo mode app (all 7 panels)
 - [x] Phase 3 — Supabase layer (bootstrap SQL + frontend connection)
-- [ ] Phase 4 — Pull engine (live data ingestion scripts)
+- [x] Phase 4 — Pull engine (live data ingestion scripts)
 - [ ] Phase 5 — SQL views (upgrade to production views with separate METAR/TAF tables)
 - [ ] Phase 6 — Exporters audit / hardening
 - [ ] Phase 7 — Full audit
