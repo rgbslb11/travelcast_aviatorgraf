@@ -1,5 +1,0 @@
-Title: TravelCast Airport Impact Overlay
-Refresh: 60
-Font: 1, 11, 1, "Arial"
-Text: 39.8561,-104.6737,1,"DEN: Ground Delay Program - 63 min avg"
-End:

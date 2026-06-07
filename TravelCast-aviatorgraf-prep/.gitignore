@@ -1,8 +1,0 @@
-.env
-.env.local
-*.log
-node_modules/
-.DS_Store
-__pycache__/
-*.pyc
-.vscode/settings.json
