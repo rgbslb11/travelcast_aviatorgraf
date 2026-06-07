@@ -30,16 +30,41 @@ SOURCE_ID = 'aviationweather_api'
 BATCH_SIZE = 30  # AviationWeather recommends no more than 50 IDs per request
 
 
+def _parse_wind_dir(wdir) -> str:
+    """Parse wind direction from AviationWeather METAR JSON.
+
+    Returns 'VRB' for variable or missing wind direction.
+    Returns a zero-padded three-digit string for numeric directions.
+    Returns the raw cleaned string for malformed values (never raises).
+    """
+    if wdir is None or wdir == '':
+        return 'VRB'
+    cleaned = str(wdir).strip()
+    if cleaned.upper() == 'VRB':
+        return 'VRB'
+    try:
+        return f'{int(float(cleaned)):03d}'
+    except (ValueError, TypeError):
+        # Malformed but non-empty — preserve as-is rather than crash
+        log('wind_dir_parse_warning', {'raw_wdir': cleaned})
+        return cleaned
+
+
 def parse_metar(obj: dict) -> dict:
     """Extract METAR snapshot fields from an AviationWeather.gov METAR JSON object."""
-    wdir = obj.get('wdir', '')
+    wind_dir = _parse_wind_dir(obj.get('wdir'))
+
     wspd = obj.get('wspd', '')
     wgst = obj.get('wgst', '')
-
-    wind_dir = 'VRB' if not wdir else f'{int(wdir):03d}'
-    wind_str = f'{wind_dir}{str(int(wspd or 0)).zfill(2)}'
+    try:
+        wind_str = f'{wind_dir}{str(int(wspd or 0)).zfill(2)}'
+    except (ValueError, TypeError):
+        wind_str = f'{wind_dir}00'
     if wgst:
-        wind_str += f'G{int(wgst):02d}'
+        try:
+            wind_str += f'G{int(wgst):02d}'
+        except (ValueError, TypeError):
+            pass
     wind_str += 'KT'
 
     vis = obj.get('visib', '')
@@ -138,56 +163,111 @@ def main() -> None:
 
     # ── Fetch METARs ──────────────────────────────────────────────────
     metar_raw: list[dict] = []
-    metar_errors: list[str] = []
+    metar_fetch_errors: list[str] = []
     for batch in batched(icao_list, BATCH_SIZE):
         ids = ','.join(batch)
         try:
             data = http_get_json(METAR_URL.format(ids=ids))
             if isinstance(data, list):
                 metar_raw.extend(data)
-            log('metar_batch_ok', {'batch_size': len(batch), 'returned': len(data) if isinstance(data, list) else 0})
+            log('metar_batch_ok', {
+                'batch_size': len(batch),
+                'returned': len(data) if isinstance(data, list) else 0,
+            })
         except Exception as e:
-            metar_errors.append(str(e))
+            metar_fetch_errors.append(str(e))
             log('metar_batch_error', str(e))
 
-    metar_parsed = {m['icao']: m for m in (parse_metar(r) for r in metar_raw)}
+    # ── Parse METARs — per-record try/except, keep valid records ──────
+    metar_parsed: dict[str, dict] = {}
+    metar_parse_errors = 0
+    for r in metar_raw:
+        try:
+            m = parse_metar(r)
+            if m.get('icao'):
+                metar_parsed[m['icao']] = m
+        except Exception as e:
+            metar_parse_errors += 1
+            log('metar_parse_error', {'icao': r.get('icaoId', '?'), 'error': str(e)})
+
+    log('metar_parse_complete', {
+        'fetched': len(metar_raw),
+        'parsed_ok': len(metar_parsed),
+        'parse_errors': metar_parse_errors,
+    })
 
     # ── Fetch TAFs ────────────────────────────────────────────────────
     taf_raw: list[dict] = []
-    taf_errors: list[str] = []
+    taf_fetch_errors: list[str] = []
     for batch in batched(icao_list, BATCH_SIZE):
         ids = ','.join(batch)
         try:
             data = http_get_json(TAF_URL.format(ids=ids))
             if isinstance(data, list):
                 taf_raw.extend(data)
-            log('taf_batch_ok', {'batch_size': len(batch), 'returned': len(data) if isinstance(data, list) else 0})
+            log('taf_batch_ok', {
+                'batch_size': len(batch),
+                'returned': len(data) if isinstance(data, list) else 0,
+            })
         except Exception as e:
-            taf_errors.append(str(e))
+            taf_fetch_errors.append(str(e))
             log('taf_batch_error', str(e))
 
-    taf_parsed = {t['icao']: t for t in (parse_taf(r) for r in taf_raw)}
+    # ── Parse TAFs — per-record try/except, keep valid records ────────
+    taf_parsed: dict[str, dict] = {}
+    taf_parse_errors = 0
+    for r in taf_raw:
+        try:
+            t = parse_taf(r)
+            if t.get('icao'):
+                taf_parsed[t['icao']] = t
+        except Exception as e:
+            taf_parse_errors += 1
+            log('taf_parse_error', {'icao': r.get('icaoId', '?'), 'error': str(e)})
 
-    # ── Save raw caches ───────────────────────────────────────────────
+    log('taf_parse_complete', {
+        'fetched': len(taf_raw),
+        'parsed_ok': len(taf_parsed),
+        'parse_errors': taf_parse_errors,
+    })
+
+    # ── Save raw caches (write even if parse errors occurred) ─────────
     save_raw('metar_raw', metar_raw)
     save_raw('taf_raw', taf_raw)
     save_raw('metar_parsed', metar_parsed)
     save_raw('taf_parsed', taf_parsed)
-    log('raw_saved', {'metar': len(metar_raw), 'taf': len(taf_raw)})
+    log('raw_saved', {'metar_raw': len(metar_raw), 'taf_raw': len(taf_raw)})
 
-    all_errors = metar_errors + taf_errors
+    total_fetch_errors = len(metar_fetch_errors) + len(taf_fetch_errors)
+    total_parse_errors = metar_parse_errors + taf_parse_errors
+    all_fetch_error_msgs = metar_fetch_errors + taf_fetch_errors
+
     log('pull_summary', {
         'metar_fetched': len(metar_raw),
+        'metar_parsed': len(metar_parsed),
         'taf_fetched': len(taf_raw),
-        'errors': len(all_errors),
+        'taf_parsed': len(taf_parsed),
+        'fetch_errors': total_fetch_errors,
+        'parse_errors': total_parse_errors,
         'dry_run': args.dry_run,
     })
 
+    if args.dry_run:
+        for icao, m in list(metar_parsed.items())[:5]:
+            log('metar_sample', {
+                'icao': icao,
+                'wind': m.get('metar_wind'),
+                'vis': m.get('metar_visibility'),
+                'flt_cat': m.get('flight_category'),
+                'condition': m.get('metar_condition'),
+            })
+
+    # Feed run succeeds if fetching worked; parse errors are partial data, not failure
     write_feed_run(
         sb_url, sb_key, SOURCE_ID,
-        success=len(all_errors) == 0,
-        records=len(metar_raw),
-        error='; '.join(all_errors[:3]) if all_errors else None,
+        success=total_fetch_errors == 0,
+        records=len(metar_parsed),
+        error='; '.join(all_fetch_error_msgs[:3]) if all_fetch_error_msgs else None,
         dry_run=args.dry_run,
     )
 

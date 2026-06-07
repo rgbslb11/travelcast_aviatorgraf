@@ -179,9 +179,7 @@ Next: Phase 5 — SQL views upgrade.
 ### Loader status
 
 - `load_focus_airports_to_supabase.py --dry-run`: PASSED — 71 airports, 0 rejected
-- Live load: BLOCKED — `airports` table missing INSERT/UPDATE grant for service_role
-  - Fix: run `sql/02_grant_service_role_write.sql` in Supabase SQL Editor once
-  - Then re-run: `python scripts/load/load_focus_airports_to_supabase.py`
+- Live load: PASSED — 71 airports upserted to Supabase (after running sql/02_grant_service_role_write.sql)
 
 ### SQL views (paste `sql/03_add_detail_views.sql` in Supabase SQL Editor)
 
@@ -199,14 +197,43 @@ Next: Phase 5 — SQL views upgrade.
 - Filter bar added to Airport Status Board: region dropdown, search input, op/forecast impact dropdowns
 - Legacy labels with concatenated doctrine text are handled gracefully via `split("—")[0].trim()`
 
-### Audit results (2026-06-07, Phase 5 partial)
+### METAR/TAF parser fix (2026-06-07)
+
+`pull_aviationweather_metar_taf.py` crashed on variable wind direction:
+- Root cause: `int('VRB')` raised ValueError — `not wdir` was False for the string `'VRB'`
+- Fix: extracted `_parse_wind_dir()` helper with explicit `'VRB'` string check, float-safe numeric parsing, and graceful fallback for malformed values
+- Per-record try/except added to METAR and TAF parse loops — one bad record no longer crashes the batch
+- Parse errors counted and logged separately from fetch errors
+- Feed run `success` now reflects fetch success only (partial parse errors are not total failure)
+- Dry-run now reports: metar_fetched, metar_parsed, taf_fetched, taf_parsed, fetch_errors, parse_errors
+
+### pull_all.py --dry-run at 71-airport scale (2026-06-07)
+
+| Script | Result | Key metrics |
+|---|---|---|
+| `pull_faa_nas_status.py` | PASSED | 71 airports, 13 FAA events, 10 tracked matched, 61 NORMAL |
+| `pull_aviationweather_metar_taf.py` | PASSED | METAR 71/71, TAF 71/71, 0 parse errors, 0 fetch errors |
+| `pull_nws_forecasts.py` | PASSED | 71 forecasts cached |
+| `pull_atcscc_ops_plan.py` | PASSED | 5 advisories parsed |
+| `rebuild_airport_status_snapshots.py` | PASSED | 71 combined snapshots |
+| **pull_all.py** | **5/5 PASSED** | **56 sec elapsed, 0 failed** |
+
+### Audit results (2026-06-07, Phase 5 complete)
 
 - [x] py_compile all pull + load scripts: PASSED
 - [x] No-secret audit: PASSED
 - [x] Source doctrine audit: PASSED
 - [x] File tree audit: PASSED
-- [ ] pull_all.py at 71-airport scale: PENDING (blocked on airport load grant)
-- [ ] SQL views deployed to Supabase: PENDING (paste 02 + 03 in SQL Editor)
+- [x] pull_all.py --dry-run at 71-airport scale: PASSED (5/5 scripts, 0 failed)
+- [ ] pull_all.py live run at 71-airport scale: READY — safe to run
+- [ ] SQL views deployed to Supabase: paste sql/03_add_detail_views.sql in SQL Editor
+
+### Safe to run live?
+
+**Yes.** `pull_all.py --dry-run` passed 5/5 at 71-airport scale with 0 parse errors, 0 fetch errors.
+AviationWeather 504 on batch 2 was transient (did not recur on second dry-run). Parser is now fault-tolerant.
+
+Run: `python scripts/pull/pull_all.py`
 
 ## Phase Completion Status
 
@@ -214,6 +241,6 @@ Next: Phase 5 — SQL views upgrade.
 - [x] Phase 2 — Demo mode app (all 7 panels)
 - [x] Phase 3 — Supabase layer (bootstrap SQL + frontend connection)
 - [x] Phase 4 — Pull engine (live data ingestion scripts)
-- [ ] Phase 5 — 71-airport product (in progress — blocked on Supabase grants)
+- [x] Phase 5 — 71-airport product (airports loaded, parser fixed, dry-run 5/5)
 - [ ] Phase 6 — Exporters audit / hardening
 - [ ] Phase 7 — Full audit
