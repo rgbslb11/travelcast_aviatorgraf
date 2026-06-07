@@ -1,0 +1,72 @@
+region,city_name,display_name,iata,icao,active,sort_order,latitude,longitude
+Northeast,New York,New York JFK,JFK,KJFK,true,101,40.6413,-73.7781
+Northeast,Newark,Newark Liberty,EWR,KEWR,true,102,40.6925,-74.1687
+Northeast,New York,New York LaGuardia,LGA,KLGA,true,103,40.7772,-73.8726
+Northeast,Boston,Boston Logan,BOS,KBOS,true,104,42.3656,-71.0096
+Northeast,Philadelphia,Philadelphia Intl,PHL,KPHL,true,105,39.8744,-75.2424
+Northeast,Washington,Washington Dulles,IAD,KIAD,true,106,38.9531,-77.4565
+Northeast,Washington,Washington Reagan,DCA,KDCA,true,107,38.8521,-77.0378
+Northeast,Baltimore,Baltimore/Washington,BWI,KBWI,true,108,39.1754,-76.6682
+Northeast,Buffalo,Buffalo Niagara,BUF,KBUF,true,109,42.9405,-78.7322
+Northeast,Richmond,Richmond Intl,RIC,KRIC,true,110,37.5052,-77.3197
+Southeast,Atlanta,Atlanta,ATL,KATL,true,201,33.6367,-84.4281
+Southeast,Charlotte,Charlotte Douglas,CLT,KCLT,true,202,35.2140,-80.9431
+Southeast,Raleigh,Raleigh-Durham,RDU,KRDU,true,203,35.8777,-78.7875
+Southeast,Orlando,Orlando Intl,MCO,KMCO,true,204,28.4294,-81.3089
+Southeast,Tampa,Tampa Intl,TPA,KTPA,true,205,27.9755,-82.5332
+Southeast,Jacksonville,Jacksonville Intl,JAX,KJAX,true,206,30.4941,-81.6879
+Southeast,Savannah,Savannah/Hilton Head,SAV,KSAV,true,207,32.1276,-81.2021
+Southeast,Charleston,Charleston Intl,CHS,KCHS,true,208,32.8986,-80.0405
+Florida,Miami,Miami Intl,MIA,KMIA,true,301,25.7959,-80.2870
+Florida,Fort Lauderdale,Fort Lauderdale-Hollywood,FLL,KFLL,true,302,26.0726,-80.1527
+Florida,West Palm Beach,Palm Beach Intl,PBI,KPBI,true,303,26.6832,-80.0956
+Florida,Fort Myers,Southwest Florida Intl,RSW,KRSW,true,304,26.5362,-81.7552
+Great Lakes,Chicago,Chicago O'Hare,ORD,KORD,true,401,41.9742,-87.9073
+Great Lakes,Chicago,Chicago Midway,MDW,KMDW,true,402,41.7859,-87.7440
+Great Lakes,Detroit,Detroit Metro,DTW,KDTW,true,403,42.2162,-83.3554
+Great Lakes,Cleveland,Cleveland Hopkins,CLE,KCLE,true,404,41.4117,-81.8498
+Great Lakes,Pittsburgh,Pittsburgh Intl,PIT,KPIT,true,405,40.4915,-80.2329
+Great Lakes,Cincinnati,Cincinnati/N. Kentucky,CVG,KCVG,true,406,39.0488,-84.6678
+Great Lakes,Minneapolis,Minneapolis-St. Paul,MSP,KMSP,true,407,44.8820,-93.2218
+Great Lakes,Milwaukee,Milwaukee Mitchell,MKE,KMKE,true,408,42.9472,-87.8966
+Southern Plains,Dallas,Dallas/Fort Worth,DFW,KDFW,true,501,32.8998,-97.0403
+Southern Plains,Houston,Houston Intercontinental,IAH,KIAH,true,502,29.9902,-95.3368
+Southern Plains,Dallas,Dallas Love Field,DAL,KDAL,true,503,32.8473,-96.8517
+Southern Plains,Houston,Houston Hobby,HOU,KHOU,true,504,29.6454,-95.2789
+Southern Plains,Austin,Austin-Bergstrom,AUS,KAUS,true,505,30.1975,-97.6664
+Southern Plains,San Antonio,San Antonio Intl,SAT,KSAT,true,506,29.5337,-98.4698
+Southern Plains,New Orleans,New Orleans Armstrong,MSY,KMSY,true,507,29.9934,-90.2580
+Southern Plains,Nashville,Nashville Intl,BNA,KBNA,true,508,36.1245,-86.6782
+Southern Plains,Oklahoma City,Oklahoma City Will Rogers,OKC,KOKC,true,509,35.3931,-97.6007
+Southern Plains,Tulsa,Tulsa Intl,TUL,KTUL,true,510,36.1984,-95.8881
+Mid-South,Memphis,Memphis Intl,MEM,KMEM,true,601,35.0424,-89.9767
+Mid-South,St. Louis,St. Louis Lambert,STL,KSTL,true,602,38.7487,-90.3700
+Mid-South,Indianapolis,Indianapolis Intl,IND,KIND,true,603,39.7173,-86.2944
+Mid-South,Columbus,Columbus John Glenn,CMH,KCMH,true,604,39.9980,-82.8919
+Mid-South,Kansas City,Kansas City Intl,MCI,KMCI,true,605,39.2976,-94.7139
+Midwest,Des Moines,Des Moines Intl,DSM,KDSM,true,701,41.5340,-93.6631
+Midwest,Omaha,Eppley Airfield,OMA,KOMA,true,702,41.3032,-95.8941
+Midwest,Little Rock,Little Rock Clinton,LIT,KLIT,true,703,34.7294,-92.2243
+Rocky Mountains,Denver,Denver Intl,DEN,KDEN,true,801,39.8561,-104.6737
+Rocky Mountains,Salt Lake City,Salt Lake City Intl,SLC,KSLC,true,802,40.7884,-111.9778
+Rocky Mountains,Albuquerque,Albuquerque Sunport,ABQ,KABQ,true,803,35.0402,-106.6090
+Rocky Mountains,Boise,Boise Airport,BOI,KBOI,true,804,43.5644,-116.2228
+Rocky Mountains,Colorado Springs,Colorado Springs,COS,KCOS,true,805,38.8058,-104.7006
+Rocky Mountains,Bozeman,Bozeman Yellowstone,BZN,KBZN,true,806,45.7775,-111.1533
+Desert Southwest,Las Vegas,Las Vegas Harry Reid,LAS,KLAS,true,901,36.0840,-115.1537
+Desert Southwest,Phoenix,Phoenix Sky Harbor,PHX,KPHX,true,902,33.4373,-112.0078
+Desert Southwest,Tucson,Tucson Intl,TUS,KTUS,true,903,32.1161,-110.9410
+Desert Southwest,El Paso,El Paso Intl,ELP,KELP,true,904,31.8072,-106.3779
+West Coast,Los Angeles,Los Angeles Intl,LAX,KLAX,true,1001,33.9416,-118.4085
+West Coast,San Francisco,San Francisco Intl,SFO,KSFO,true,1002,37.6213,-122.3790
+West Coast,San Diego,San Diego Intl,SAN,KSAN,true,1003,32.7338,-117.1933
+West Coast,San Jose,San Jose Intl,SJC,KSJC,true,1004,37.3626,-121.9290
+West Coast,Oakland,Oakland Intl,OAK,KOAK,true,1005,37.7213,-122.2208
+West Coast,Seattle,Seattle-Tacoma Intl,SEA,KSEA,true,1006,47.4502,-122.3088
+West Coast,Portland,Portland Intl,PDX,KPDX,true,1007,45.5898,-122.5951
+West Coast,Sacramento,Sacramento Intl,SMF,KSMF,true,1008,38.6954,-121.5908
+West Coast,Spokane,Spokane Intl,GEG,KGEG,true,1009,47.6199,-117.5338
+Pacific,Honolulu,Honolulu Intl,HNL,PHNL,true,1101,21.3245,-157.9251
+Pacific,Maui,Kahului Airport,OGG,PHOG,true,1102,20.8986,-156.4305
+Pacific,Anchorage,Anchorage Intl,ANC,PANC,true,1103,61.1741,-149.9961
+Pacific,San Juan,San Juan Luis Munoz Marin,SJU,TJSJ,true,1104,18.4394,-66.0018

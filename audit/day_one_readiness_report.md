@@ -144,12 +144,76 @@ The `advisoryUrl` on live GDP events (from `airport-events`) can be followed for
 **Phase 4 complete and live-verified.** `pull_all.py` wrote 10 snapshots across all sources.
 Next: Phase 5 — SQL views upgrade.
 
+## Phase 5 — Fast-track 71-airport day-one product (in progress 2026-06-07)
+
+### Files created / modified
+
+| File | Description |
+|---|---|
+| `data/reference/travelcast_focus_airports.csv` | 71 focus airports — 11 regions, lat/lon for NWS, all active |
+| `scripts/load/load_focus_airports_to_supabase.py` | Upsert loader — dry-run, --limit, service-role key from .env only |
+| `sql/01_seed_focus_airports.sql` | Safe-to-rerun SQL upsert for all 71 airports |
+| `sql/02_grant_service_role_write.sql` | GRANT INSERT/UPDATE/DELETE to service_role on all writable tables |
+| `sql/03_add_detail_views.sql` | 5 new views: v_airport_detail_current, v_airport_metar_latest, v_airport_taf_latest, v_airport_operational_events_latest, v_airport_runway_context |
+| `scripts/pull/lib_pull.py` | `nws_impact()` now returns short label only — doctrine tag shown separately in UI |
+| `js/modules/airportDashboard.js` | Region filter, airport search, operational/forecast impact filters, doctrine label separation |
+| `css/app.css` | `.source-doctrine`, `.filter-bar`, `.export-row` styles added |
+
+### Airports loaded
+
+| Region | Count |
+|---|---|
+| Northeast | 10 |
+| Southeast | 8 |
+| Florida | 4 |
+| Great Lakes | 8 |
+| Southern Plains | 10 |
+| Mid-South | 5 |
+| Midwest | 3 |
+| Rocky Mountains | 6 |
+| Desert Southwest | 4 |
+| West Coast | 9 |
+| Pacific | 4 |
+| **Total** | **71** |
+
+### Loader status
+
+- `load_focus_airports_to_supabase.py --dry-run`: PASSED — 71 airports, 0 rejected
+- Live load: BLOCKED — `airports` table missing INSERT/UPDATE grant for service_role
+  - Fix: run `sql/02_grant_service_role_write.sql` in Supabase SQL Editor once
+  - Then re-run: `python scripts/load/load_focus_airports_to_supabase.py`
+
+### SQL views (paste `sql/03_add_detail_views.sql` in Supabase SQL Editor)
+
+- `v_airport_detail_current` — full detail, all sources combined
+- `v_airport_metar_latest` — METAR fields + Aviation Weather Truth doctrine label
+- `v_airport_taf_latest` — TAF fields + Aviation Weather Truth doctrine label
+- `v_airport_operational_events_latest` — FAA/NAS fields + Current Operational Impact doctrine label
+- `v_airport_runway_context` — runway config + AAR per airport
+
+### Frontend changes
+
+- `forecast_impact_label` badge now shows short label only (e.g. "No significant weather")
+- Doctrine tag "Forecast Weather Impact — NWS forecast proxy" shown as small italic source text below badge
+- Same separation applied to Current Operational Impact badge
+- Filter bar added to Airport Status Board: region dropdown, search input, op/forecast impact dropdowns
+- Legacy labels with concatenated doctrine text are handled gracefully via `split("—")[0].trim()`
+
+### Audit results (2026-06-07, Phase 5 partial)
+
+- [x] py_compile all pull + load scripts: PASSED
+- [x] No-secret audit: PASSED
+- [x] Source doctrine audit: PASSED
+- [x] File tree audit: PASSED
+- [ ] pull_all.py at 71-airport scale: PENDING (blocked on airport load grant)
+- [ ] SQL views deployed to Supabase: PENDING (paste 02 + 03 in SQL Editor)
+
 ## Phase Completion Status
 
 - [x] Phase 1 — Bootstrap / file tree
 - [x] Phase 2 — Demo mode app (all 7 panels)
 - [x] Phase 3 — Supabase layer (bootstrap SQL + frontend connection)
 - [x] Phase 4 — Pull engine (live data ingestion scripts)
-- [ ] Phase 5 — SQL views (upgrade to production views with separate METAR/TAF tables)
+- [ ] Phase 5 — 71-airport product (in progress — blocked on Supabase grants)
 - [ ] Phase 6 — Exporters audit / hardening
 - [ ] Phase 7 — Full audit

@@ -220,15 +220,17 @@ _AMBER_FORECAST = frozenset({
 def nws_impact(short_forecast: str) -> tuple[str, str]:
     """Return (impact_color, impact_label) from an NWS short forecast string.
 
+    impact_label is the SHORT user-facing label only.
+    The doctrine label ('Forecast Weather Impact — NWS forecast proxy') is
+    displayed separately in the frontend as small source text — never concatenated here.
     This is a proxy — not an official FAA delay forecast.
-    Label wording follows source doctrine: 'Forecast Weather Impact — NWS'.
     """
     lo = short_forecast.lower()
     if any(t in lo for t in _RED_FORECAST):
-        return 'Red', 'Significant weather likely — Forecast Weather Impact — NWS forecast proxy'
+        return 'Red', 'Significant weather likely'
     if any(t in lo for t in _AMBER_FORECAST):
-        return 'Amber', 'Weather may affect operations — Forecast Weather Impact — NWS forecast proxy'
-    return 'Green', 'No significant weather — Forecast Weather Impact — NWS forecast proxy'
+        return 'Amber', 'Weather may affect operations'
+    return 'Green', 'No significant weather'
 
 
 def overall_impact(operational_color: str | None, forecast_color: str | None) -> str | None:
