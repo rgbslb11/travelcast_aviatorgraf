@@ -435,6 +435,102 @@ When `isSupabaseConfigured()` is true and the view returns rows:
 
 **Operator action required before next session:** Paste `sql/05_fix_source_health_freshness.sql` in Supabase SQL Editor.
 
+## Phase 7 — Full Day-One Audit (2026-06-07)
+
+### Verdict
+
+> **Day-One Local Prep Ready**
+
+No blocking defects found. All automated checks pass. All security requirements met. All source doctrine requirements met. Pull engine verified at full 71-airport scale. Demo fallback preserved. Product is safe for local TravelCast prep use.
+
+---
+
+### Automated checks
+
+| Check | Result | Detail |
+|---|---|---|
+| `py_compile scripts/pull/*.py` | PASSED | 7 scripts, 0 syntax errors |
+| `py_compile scripts/load/*.py` | PASSED | 1 script, 0 syntax errors |
+| `pull_all.py --dry-run` | PASSED | 5/5 scripts, 71/71 airports all sources, 0 fetch errors, 0 parse errors, 78 sec |
+| `audit_no_secrets.py` | PASSED | No service_role JWT; anon JWT only in js/config.js (permitted) |
+| `audit_source_doctrine.py` | PASSED | No forbidden mislabeling phrases |
+| `audit_file_tree.py` | PASSED | All required files present |
+
+### Code audit — security
+
+| Check | Result |
+|---|---|
+| No real API calls from browser JS | PASS — no `fetch()` to FAA, NWS, AviationWeather, Baron, OpenWeather, Synoptic, FlightAware |
+| No service_role key in any JS file | PASS — audit_no_secrets.py confirmed |
+| No private API keys in frontend | PASS — audit_no_secrets.py confirmed |
+| git HEAD `js/config.js` has placeholder values | PASS — `REPLACE_WITH_SUPABASE_URL` / `REPLACE_WITH_SUPABASE_ANON_KEY` |
+| `.env` gitignored, local-only | PASS — not in git history |
+| No React/Next.js/Vite/TypeScript imports | PASS — plain HTML/CSS/vanilla JS |
+
+### Code audit — source doctrine
+
+| Check | Result |
+|---|---|
+| All three source labels in Airport Detail | PASS — "Current Operational Impact — FAA NAS", "Forecast Weather Impact — NWS forecast proxy", "Aviation Weather Truth — AviationWeather" |
+| NWS proxy notice in all 4 exporters | PASS — all four carry "NOT an official FAA delay forecast" |
+| No NWS forecast labeled as FAA operational truth | PASS — apparent regex hits were all the correct disclaimer text |
+| `audit_source_doctrine.py` | PASS — no forbidden phrases |
+
+### Code audit — demo fallback
+
+| Module | Demo fallback method | Status |
+|---|---|---|
+| `airportDashboard.js` | Falls back to `sampleAirportStatus` when Supabase fails/not configured | ✓ |
+| `aviationWeather.js` | Demo branch renders sample hazards | ✓ |
+| `faaOps.js` | Demo branch renders `sampleFaaOps` | ✓ |
+| `routecast.js` | Demo branch renders `sampleRoutes` | ✓ |
+| `sourceHealth.js` | Demo branch renders source registry with `no_runs` | ✓ |
+| `airportDetail.js` | Data-driven from caller — no independent fetch | ✓ |
+| `graphicsQueue.js` | localStorage-backed, data-source-agnostic | ✓ |
+
+### Operator-verified items (confirmed in Phase 6 closeout + current session status)
+
+| Item | Status |
+|---|---|
+| App loads from `python -m http.server 8080` | Confirmed by operator |
+| Banner: "Supabase Connected — live views" | Confirmed by operator |
+| Airport Status Board: 71 of 71 airports | Confirmed by operator |
+| Search / region / op-impact / forecast-impact filters | Confirmed by operator |
+| Airport Detail source separation (3 panels) | Code-verified + operator-confirmed |
+| Aviation Hazards: honest empty state in Supabase mode | Confirmed by operator |
+| ATCSCC / FAA Ops: live active FAA/NAS programs | Confirmed by operator |
+| RouteCast: honest empty state in Supabase mode | Confirmed by operator |
+| Source Health: official sources fresh/aging/stale after SQL fix | Confirmed by operator (after sql/05 applied) |
+| Source Health: Day-One Operator Checklist renders | Confirmed by operator |
+| Graphics Queue: all 6 actions (Add, Ready, Used, Remove, JSON, GeoJSON, Placefile) | Confirmed by operator |
+| Exported ELP broadcast package: source_mode=live, correct metadata | Confirmed by operator |
+| Exported All Airports GeoJSON: feature_count=71, source_mode=live | Confirmed by operator |
+
+### Export path verification (all 8 paths — code-verified)
+
+All eight export buttons present, wired, and metadata-complete. See Phase 6 Closeout export path audit table for full breakdown. No new issues found.
+
+### Non-blocking limitations (safe for local use)
+
+| Limitation | Impact | Resolution path |
+|---|---|---|
+| Aviation Hazards table empty — `v_aviation_hazards_latest` is a placeholder (WHERE false) | Honest empty state displayed; no incorrect data shown | Future: populate SIGMET/AIRMET/CWA via pull script |
+| RouteCast routes not configured — `v_routecast_routes` is a placeholder | Honest empty state displayed; no incorrect data shown | Future: define monitored routes |
+| ATCSCC advisory full text is local-cache only — no CDP/SWAP full plan text | ATCSCC panel shows active GDP/GS/Closure events from FAA NAS; advisory sub-path returns NOTAM-style closures | Future: subscribe to ATCSCC advisory feed |
+| `js/config.js` must be manually configured on each new workstation | One-time setup per machine | Document in operator runbook |
+| App started manually — no auto-start script | Operator must run `python -m http.server 8080` | Future: add startup helper |
+| NWS PBI (Palm Beach) TCP connection reset observed once (2026-06-07 prior run) | Transient; 70/71 cached cleanly; current run 71/71 clean | No action needed; parser is fault-tolerant |
+
+### Phase 7 audit — files committed
+
+| File | Change |
+|---|---|
+| `audit/day_one_readiness_report.md` | Phase 7 full audit results, verdict, limitation inventory |
+
+No code files modified — no blocking defects found requiring changes.
+
+---
+
 ## Phase Completion Status
 
 - [x] Phase 1 — Bootstrap / file tree
@@ -445,4 +541,4 @@ When `isSupabaseConfigured()` is true and the view returns rows:
 - [x] Phase 5b — Secondary tabs: live/demo separation, honest empty states, doctrine labels
 - [x] Phase 6 — Exporters audit / day-one hardening (all 4 exporters hardened, Graphics Queue improved, Source Health async + operator checklist)
 - [x] Phase 6 Closeout — Browser-verified, Source Health freshness fixed (SQL + JS), all 8 export paths audited
-- [ ] Phase 7 — Final runbook / deployment planning
+- [x] **Phase 7 — Full Day-One Audit: PASSED → Day-One Local Prep Ready**
