@@ -335,6 +335,106 @@ The two new placeholder views must exist in Supabase before the Aviation Hazards
 - [x] No new private keys or secrets added in any export file
 - [x] NWS proxy notice present in all four exporters
 
+## Phase 6 Closeout — Browser-verified and hardened (2026-06-07)
+
+### Browser verification (confirmed by operator)
+
+| Panel | Status |
+|---|---|
+| Day-One Operator Checklist | Renders correctly |
+| Source Health live feed-run telemetry | Renders — official sources showed `unknown` (fixed below) |
+| Airport Status Board | Supabase Connected, 71 airports |
+| ATCSCC / FAA Ops | Live active FAA/NAS programs displayed |
+| RouteCast | Honest empty state ("No live RouteCast routes configured yet") |
+| Aviation Hazards | Honest empty state ("No live aviation hazard records available") |
+| Graphics Queue | DFW airport_status_card queued; all 6 actions confirmed |
+
+### Exported file spot-check (ELP broadcast package confirmed by operator)
+
+| Field | Present |
+|---|---|
+| `source_mode` | `"live"` — confirmed |
+| `package_version` | `"1.0"` — confirmed |
+| `generated_at` | ISO timestamp — confirmed |
+| `valid_until` | ISO timestamp — confirmed |
+| `source_labels` | 4-element array — confirmed |
+| `nws_proxy_notice` | Present — confirmed |
+
+All Airports GeoJSON spot-check:
+- `source_mode: "live"` — confirmed
+- `feature_count: 71` — confirmed
+- `source_doctrine` — confirmed
+- `nws_proxy_notice` — confirmed
+
+### Source Health freshness fix
+
+**Bug:** `v_source_health_dashboard` freshness_status used `max(retrieved_at_utc)` (includes failed runs)
+and only had three states (`fresh`, `no_runs`, `unknown`). Official sources with successful runs
+older than 30 minutes showed `unknown` instead of `aging` or `stale`.
+
+**Fix:** `sql/05_fix_source_health_freshness.sql`
+- Freshness now computed from `last_success_at` (successful runs only)
+- Four tiers:
+  - `fresh` — last success < 30 minutes ago → green badge
+  - `aging` — last success 30 min – 3 hours ago → amber badge
+  - `stale` — last success > 3 hours ago → red badge
+  - `no_runs` — no successful run on record → gray badge
+- Frontend (`js/modules/sourceHealth.js`): `stale` now maps to red badge class
+
+**Action required:** Paste `sql/05_fix_source_health_freshness.sql` into Supabase SQL Editor and run.
+
+### Export path audit (all 8 buttons — code-verified)
+
+| Export | Trigger | Function | `generated_at` | `source_mode` | `source_doctrine` | `airport_count`/`airport_id` | freshness | NWS proxy |
+|---|---|---|---|---|---|---|---|---|
+| Dashboard JSON | `#export-dashboard-json` | `dashboardJson(records)` | ✓ | ✓ | ✓ source_doctrine block | airport_count ✓ | freshness_summary ✓ | nws_proxy_notice ✓ |
+| All Airports GeoJSON | `#export-all-geojson` | `airportRowsToGeoJSON(records)` | ✓ | ✓ | ✓ source_doctrine string | feature_count ✓ | per-feature freshness_status ✓ | nws_proxy_notice ✓ |
+| Detail Package JSON | `#detail-export-json` | `airportBroadcastPackage(airport)` | ✓ | ✓ | ✓ source_labels array | airport.airport_id ✓ | operational_status.freshness_status ✓ | nws_proxy_notice ✓ |
+| Detail GeoJSON | `#detail-export-geojson` | `selectedAirportToGeoJSON(airport)` | ✓ | ✓ | — (single feature) | feature_count=1 ✓ | per-feature freshness_status ✓ | nws_proxy_notice ✓ |
+| Detail Placefile | `#detail-export-placefile` | `airportPlacefile([airport])` | ✓ header | ✓ header | ✓ header | iata per label ✓ | [aging]/[stale] tag ✓ | header comment ✓ |
+| Queue Package JSON | `data-q-action="json"` | `airportBroadcastPackage(q.payload)` | ✓ | ✓ | ✓ source_labels array | airport.airport_id ✓ | operational_status.freshness_status ✓ | nws_proxy_notice ✓ |
+| Queue GeoJSON | `data-q-action="geojson"` | `selectedAirportToGeoJSON(q.payload)` | ✓ | ✓ | — (single feature) | feature_count=1 ✓ | per-feature freshness_status ✓ | nws_proxy_notice ✓ |
+| Queue Placefile | `data-q-action="placefile"` | `airportPlacefile([q.payload])` | ✓ header | ✓ header | ✓ header | iata per label ✓ | [aging]/[stale] tag ✓ | header comment ✓ |
+
+### Supabase mode export — no stale demo data
+
+When `isSupabaseConfigured()` is true and the view returns rows:
+- `appState.demoModeActive = false` → `source_mode = "live"` in all exports
+- Records passed to exporters come from `v_airport_status_dashboard` (live snapshots)
+- Demo seed snapshots (`snapshot_source = 'demo'`) are overridden by live snapshots via `ORDER BY generated_at DESC LIMIT 1` LATERAL join — live pull rows are always newer
+- Demo airports not in the 71-airport focus set do not appear in the view since `airports.active = true` filters apply
+
+### Graphics Queue workflow (code-verified)
+
+| Step | Handler | Result |
+|---|---|---|
+| Add item | `action = "queue"` in handleAction | `addQueueItem()` → persisted to localStorage |
+| Mark Ready (fresh/aging) | `action = "ready"`, freshnessStatus ∈ {fresh, aging} | status → "Ready" (green) |
+| Mark Ready (stale/unknown) | `action = "ready"`, freshnessStatus ∈ {stale, unknown} | status → "Needs Freshness Review" (amber) |
+| Mark Used | `action = "used"` | status → "Used" (gray) |
+| Remove | `action = "remove"` | `removeQueueItem(id)` → removed from localStorage |
+| Export JSON | `action = "json"` | `airportBroadcastPackage(q.payload)` → downloaded |
+| Export GeoJSON | `action = "geojson"` | `selectedAirportToGeoJSON(q.payload)` → downloaded |
+| Export Placefile | `action = "placefile"` | `airportPlacefile([q.payload])` → downloaded |
+
+### Audit results (2026-06-07, Phase 6 closeout)
+
+- [x] py_compile scripts/pull/*.py (7 scripts): PASSED
+- [x] py_compile scripts/load/*.py (1 script): PASSED
+- [x] pull_all.py --dry-run: 5/5 PASSED, 71 airports, 0 fetch errors (NWS PBI connection reset transient — 70/71 cached, expected behavior)
+- [x] No-secret audit: PASSED
+- [x] Source doctrine audit: PASSED
+- [x] File tree audit: PASSED
+
+### Files committed in Phase 6 closeout
+
+| File | Change |
+|---|---|
+| `sql/05_fix_source_health_freshness.sql` | Fixes v_source_health_dashboard: 4-tier freshness, success-only timestamps |
+| `js/modules/sourceHealth.js` | stale → red badge, aging → amber, no_runs → gray |
+
+**Operator action required before next session:** Paste `sql/05_fix_source_health_freshness.sql` in Supabase SQL Editor.
+
 ## Phase Completion Status
 
 - [x] Phase 1 — Bootstrap / file tree
@@ -344,4 +444,5 @@ The two new placeholder views must exist in Supabase before the Aviation Hazards
 - [x] Phase 5 — 71-airport product (airports loaded, parser fixed, dry-run 5/5)
 - [x] Phase 5b — Secondary tabs: live/demo separation, honest empty states, doctrine labels
 - [x] Phase 6 — Exporters audit / day-one hardening (all 4 exporters hardened, Graphics Queue improved, Source Health async + operator checklist)
-- [ ] Phase 7 — Full audit
+- [x] Phase 6 Closeout — Browser-verified, Source Health freshness fixed (SQL + JS), all 8 export paths audited
+- [ ] Phase 7 — Final runbook / deployment planning

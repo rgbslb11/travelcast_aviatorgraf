@@ -72,7 +72,9 @@ function liveSourcesHtml(sources) {
   const tierLabel = { 1: "Official", 2: "Enrichment", 3: "Commercial" };
 
   const rows = sources.map(s => {
-    const freshCls = s.freshness_status === "fresh" ? "green"
+    const freshCls = s.freshness_status === "fresh"   ? "green"
+      : s.freshness_status === "aging"   ? "amber"
+      : s.freshness_status === "stale"   ? "red"
       : s.freshness_status === "no_runs" ? "gray" : "amber";
     const tier = tierLabel[s.trust_tier] || `Tier ${s.trust_tier}`;
     return `<tr>
