@@ -1,0 +1,38 @@
+# Day One Readiness Report
+
+Date:
+
+## Result
+
+Ready for Day One TravelCast Prep: Yes / Partial / No
+
+## Functional Checks
+
+- [ ] App loads
+- [ ] Demo mode works
+- [ ] Airport board renders
+- [ ] DEN detail renders
+- [ ] Graphics queue works
+- [ ] JSON export works
+- [ ] GeoJSON export works
+- [ ] Placefile export works
+- [ ] Source health renders
+
+## Security Checks
+
+- [ ] No service-role key
+- [ ] No private API keys
+- [ ] No secrets
+- [ ] `.env` ignored
+
+## Doctrine Checks
+
+- [ ] FAA/NAS operational status separated from NWS forecast proxy
+- [ ] Commercial sources not labeled official
+- [ ] Icons use canonical IDs
+
+## Blockers
+
+## Notes
+
+## Next Actions
