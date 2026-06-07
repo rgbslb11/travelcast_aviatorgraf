@@ -276,6 +276,65 @@ Aviation Hazards, ATCSCC/FAA Ops, and RouteCast showed hardcoded demo sample dat
 
 The two new placeholder views must exist in Supabase before the Aviation Hazards and RouteCast tabs can query them without a 404 error. Until then, both tabs catch the error gracefully and show the empty state.
 
+## Phase 6 — Exporters Audit / Day-One Hardening (2026-06-07)
+
+### Files created / modified
+
+| File | Change |
+|---|---|
+| `js/exporters/exportDashboardJson.js` | Rewrote: `source_mode`, `airport_count`, `source_doctrine`, `nws_proxy_notice`, `freshness_summary`; removed hardcoded `demo: true` |
+| `js/exporters/exportGeojson.js` | Rewrote: added `generated_at`, `source_mode`, `feature_count`, `source_doctrine`, `nws_proxy_notice`; `airportFeature()` now includes `display_name`, `city`, `region`, `overall_impact_color`, `forecast_impact_color`, `forecast_impact_label`, `flight_category`, `freshness_status`, `last_updated_at` |
+| `js/exporters/exportBroadcastPackage.js` | Rewrote: `source_mode` from `appState.demoModeActive`; conditional `limitations` (live: 1 item, demo: 2 items); added `region`, `observed_at`, `taf_next_risk_window`, `freshness_status`, `last_updated_at`; `package_version: "1.0"` |
+| `js/exporters/exportPlacefile.js` | Rewrote: timestamp, source mode, doctrine, NWS proxy notice in header comments; `freshTag` appended to label when not fresh |
+| `js/modules/graphicsQueue.js` | Rewrote `itemHtml()`: structured card with IATA/name/city, product/platform/queued row, status/freshness badges, FAA/NAS badge, NWS forecast badge, METAR flight_category badge, source summary; `handleQueueAction` Mark Ready: fresh/aging → Ready, stale/unknown → Needs Freshness Review |
+| `js/modules/sourceHealth.js` | Rewrote as async: operator checklist with 10-step pre-broadcast checklist, live feed-run telemetry from `v_source_health_dashboard`, demo fallback showing source registry with `no_runs` badges |
+| `js/app.js` | Added `await` before `renderSourceHealth()` (now async) |
+
+### Metadata fields now present in all exporters
+
+| Field | dashboardJson | GeoJSON | BroadcastPackage | Placefile |
+|---|---|---|---|---|
+| `generated_at` | ✓ | ✓ | ✓ | header comment |
+| `source_mode` (live/demo) | ✓ | ✓ | ✓ | header comment |
+| `nws_proxy_notice` | ✓ | ✓ | ✓ | header comment |
+| `source_doctrine` block | ✓ | ✓ | source_labels[] | header comment |
+| Freshness metadata | `freshness_summary` | per-feature | per-airport | `[aging]`/`[stale]` tag |
+| Conditional `limitations` | — | — | ✓ | — |
+
+### Graphics Queue improvements
+
+- Each queued item now shows: IATA + display name + city/state, product type + platform + queued timestamp
+- Status badge (green=Ready, gray=Used, amber=Needs Review, blue=Draft)
+- Freshness badge with color-coded class
+- FAA/NAS impact badge with event type or "No active FAA/NAS event"
+- NWS forecast badge with impact label and color
+- METAR flight category badge (when present)
+- Source summary as `source-doctrine` italic text
+- Mark Ready: fresh or aging → Ready; stale or unknown → Needs Freshness Review
+
+### Source Health improvements
+
+- Now async — awaited in `app.js`
+- Day-One Operator Checklist: 10-step pre-broadcast verification list with connection status badge and airport count
+- Live mode: queries `v_source_health_dashboard` — shows freshness, last success, 24h run count, last error per source
+- Demo mode: shows source registry with `no_runs` for all sources + warning banner
+- Error state: shows query error message in card
+
+### Audit results (2026-06-07, Phase 6 complete)
+
+- [x] py_compile scripts/pull/*.py: PASSED (7 scripts, 0 errors)
+- [x] py_compile scripts/load/*.py: PASSED (1 script, 0 errors)
+- [x] pull_all.py --dry-run: PASSED (5/5 scripts, 71 airports, 0 fetch errors, 0 parse errors, 54 sec)
+- [x] No-secret audit: PASSED
+- [x] Source doctrine audit: PASSED
+- [x] File tree audit: PASSED
+
+### Security check
+
+- [x] `source_mode` reads from `appState.demoModeActive` (set at data-load time) — cannot be spoofed by export call
+- [x] No new private keys or secrets added in any export file
+- [x] NWS proxy notice present in all four exporters
+
 ## Phase Completion Status
 
 - [x] Phase 1 — Bootstrap / file tree
@@ -284,5 +343,5 @@ The two new placeholder views must exist in Supabase before the Aviation Hazards
 - [x] Phase 4 — Pull engine (live data ingestion scripts)
 - [x] Phase 5 — 71-airport product (airports loaded, parser fixed, dry-run 5/5)
 - [x] Phase 5b — Secondary tabs: live/demo separation, honest empty states, doctrine labels
-- [ ] Phase 6 — Exporters audit / hardening
+- [x] Phase 6 — Exporters audit / day-one hardening (all 4 exporters hardened, Graphics Queue improved, Source Health async + operator checklist)
 - [ ] Phase 7 — Full audit

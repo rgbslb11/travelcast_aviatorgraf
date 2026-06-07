@@ -56,7 +56,7 @@ async function init() {
   await renderFaaOps();
   await renderRoutecast();
   renderGraphicsQueue();
-  renderSourceHealth();
+  await renderSourceHealth();
   updateBanner();
 }
 
