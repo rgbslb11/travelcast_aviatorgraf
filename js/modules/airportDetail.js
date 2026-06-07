@@ -3,6 +3,7 @@ import { selectedAirportToGeoJSON } from "../exporters/exportGeojson.js";
 import { airportPlacefile } from "../exporters/exportPlacefile.js";
 import { downloadTextFile, impactClass, safeText, formatDateTime } from "../utils.js";
 import { addQueueItem } from "../state.js";
+import { renderGraphicsQueue } from "./graphicsQueue.js";
 
 export function renderAirportDetail(airport) {
   const container = document.querySelector("#airport-detail");
@@ -35,5 +36,8 @@ export function renderAirportDetail(airport) {
   document.querySelector("#detail-export-json").addEventListener("click", () => downloadTextFile(`${airport.iata}_broadcast_package.json`, JSON.stringify(pkg, null, 2), "application/json"));
   document.querySelector("#detail-export-geojson").addEventListener("click", () => downloadTextFile(`${airport.iata}_airport_feature.geojson`, JSON.stringify(selectedAirportToGeoJSON(airport), null, 2), "application/geo+json"));
   document.querySelector("#detail-export-placefile").addEventListener("click", () => downloadTextFile(`${airport.iata}_airport_impact.placefile.txt`, airportPlacefile([airport]), "text/plain"));
-  document.querySelector("#detail-add-queue").addEventListener("click", () => addQueueItem({ packageName: `${airport.iata} Airport Status Card`, productType: "airport_status_card", targetPlatform: "broadcast", airportId: airport.airport_id, freshnessStatus: airport.freshness_status, sourceSummary: airport.source_summary, payload: airport }));
+  document.querySelector("#detail-add-queue").addEventListener("click", () => {
+    addQueueItem({ packageName: `${airport.iata} Airport Status Card`, productType: "airport_status_card", targetPlatform: "broadcast", airportId: airport.airport_id, freshnessStatus: airport.freshness_status, sourceSummary: airport.source_summary, payload: airport });
+    renderGraphicsQueue();
+  });
 }

@@ -20,7 +20,6 @@ function setupTabs() {
 }
 
 async function init() {
-  document.querySelector("#mode-banner").textContent = APP_CONFIG.demoMode ? "Demo Mode" : "Supabase Mode";
   setupTabs();
   loadQueue();
   await renderAirportDashboard();
