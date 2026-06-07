@@ -52,9 +52,9 @@ async function init() {
   loadQueue();
   await renderAirportDashboard();
   renderAirportDetail(appState.airportStatusRecords[0]);
-  renderAviationHazards();
-  renderFaaOps();
-  renderRoutecast();
+  await renderAviationHazards();
+  await renderFaaOps();
+  await renderRoutecast();
   renderGraphicsQueue();
   renderSourceHealth();
   updateBanner();

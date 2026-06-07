@@ -1,20 +1,92 @@
 import { sampleRoutes } from "../sampleData/sampleRouteCast.js";
 import { safeText, impactClass, formatDateTime } from "../utils.js";
+import { isSupabaseConfigured, getSupabaseClient } from "../supabaseClient.js";
 
-export function renderRoutecast() {
+const DOCTRINE_LABEL = "Forecast Weather Impact — NWS forecast proxy";
+
+export async function renderRoutecast() {
+  if (isSupabaseConfigured()) {
+    await renderLiveRoutecast();
+  } else {
+    renderDemoRoutecast();
+  }
+}
+
+// ── Live mode ───────────────────────────────────────────────────────────
+
+async function renderLiveRoutecast() {
+  const container = document.querySelector("#routecast");
+  container.innerHTML = loadingHtml();
+
+  let routes = [];
+  let queryError = null;
+
+  try {
+    const client = await getSupabaseClient();
+    const { data, error } = await client
+      .from("v_routecast_routes")
+      .select("*")
+      .limit(50);
+    if (error) {
+      queryError = error.message;
+    } else {
+      routes = data || [];
+    }
+  } catch (err) {
+    queryError = err.message;
+  }
+
+  if (queryError) {
+    container.innerHTML =
+      headerHtml() +
+      `<div class="card"><p class="muted">Query error: ${safeText(queryError)}</p>
+       <span class="source-doctrine">${DOCTRINE_LABEL}</span></div>`;
+    return;
+  }
+
+  if (routes.length === 0) {
+    container.innerHTML =
+      headerHtml() +
+      `<div class="card">
+        <p><strong>No live RouteCast routes configured yet.</strong></p>
+        <p class="muted">Configure routes to begin tracking departure and en-route weather impacts.
+        Forecast weather impact is not an official FAA delay forecast.</p>
+        <span class="source-doctrine">${DOCTRINE_LABEL}</span>
+      </div>`;
+    return;
+  }
+
+  // Routes present — render them
+  const cards = routes.map(r => routeCard(r)).join("");
+  container.innerHTML = headerHtml() + cards;
+}
+
+// ── Demo mode (unchanged behavior) ─────────────────────────────────────
+
+function renderDemoRoutecast() {
   const html =
-    headerCard() +
+    `<div class="card">
+      <h2>RouteCast</h2>
+      <p class="muted">Departure-airport impact and en-route weather-impact proxy for monitored routes. Forecast weather impact is not an official FAA delay forecast.</p>
+      <div class="label">${DOCTRINE_LABEL}</div>
+      <div class="warning" style="margin-top:12px">Demo Mode: sample routes shown. Live mode combines NWS forecast proxy and FAA NAS departure impacts.</div>
+    </div>` +
     sampleRoutes.map(routeCard).join("");
   document.querySelector("#routecast").innerHTML = html;
 }
 
-function headerCard() {
+// ── Shared HTML helpers ─────────────────────────────────────────────────
+
+function headerHtml() {
   return `<div class="card">
     <h2>RouteCast</h2>
-    <p class="muted">Departure-airport impact and en-route weather-impact proxy for monitored routes. Forecast weather impact is not an official FAA delay forecast.</p>
-    <div class="label">Forecast Weather Impact — NWS forecast proxy</div>
-    <div class="warning" style="margin-top:12px">Demo Mode: sample routes shown. Live mode combines NWS forecast proxy and FAA NAS departure impacts.</div>
+    <p class="muted">Departure-airport impact and en-route weather-impact proxy for monitored routes.</p>
+    <span class="source-doctrine">${DOCTRINE_LABEL} · NOT an official FAA delay forecast</span>
   </div>`;
+}
+
+function loadingHtml() {
+  return `<div class="card"><h2>RouteCast</h2><p class="muted">Loading…</p></div>`;
 }
 
 function routeCard(r) {
@@ -33,10 +105,8 @@ function routeCard(r) {
     <div class="label" style="margin-bottom:8px">Route:
       <span style="font-weight:400;font-family:monospace">${safeText(r.route_string)}</span>
     </div>
-    <div style="display:flex;flex-direction:column">
-      ${r.waypoints.map(waypointRow).join("")}
-    </div>
-    <div class="source">${safeText(r.source)}</div>
+    ${r.waypoints ? `<div style="display:flex;flex-direction:column">${r.waypoints.map(waypointRow).join("")}</div>` : ""}
+    <span class="source-doctrine">${safeText(r.source || DOCTRINE_LABEL)}</span>
   </div>`;
 }
 

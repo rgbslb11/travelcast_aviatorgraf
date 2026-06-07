@@ -235,6 +235,47 @@ AviationWeather 504 on batch 2 was transient (did not recur on second dry-run). 
 
 Run: `python scripts/pull/pull_all.py`
 
+## Secondary tab live/demo separation (2026-06-07)
+
+### Problem
+Aviation Hazards, ATCSCC/FAA Ops, and RouteCast showed hardcoded demo sample data (dated 6/6/2026) even in Supabase-connected mode.
+
+### Changes
+
+| File | Change |
+|---|---|
+| `js/modules/aviationWeather.js` | Async; Supabase mode queries `v_aviation_hazards_latest`; shows honest empty state; demo mode unchanged |
+| `js/modules/faaOps.js` | Async; Supabase mode queries `v_airport_operational_events_latest` for non-NORMAL events; honest empty state if none; ATCSCC advisory notice; demo mode unchanged |
+| `js/modules/routecast.js` | Async; Supabase mode queries `v_routecast_routes`; shows honest empty state; demo mode unchanged |
+| `js/app.js` | Added `await` on all three now-async render calls |
+| `sql/04_placeholder_views.sql` | `v_aviation_hazards_latest` (empty, `WHERE false`); `v_routecast_routes` (empty, `WHERE false`) |
+
+### Supabase mode behavior
+
+| Tab | Live behavior |
+|---|---|
+| Aviation Hazards | Queries `v_aviation_hazards_latest` → "No live aviation hazard records available" (SIGMET/AIRMET/CWA/PIREP not yet in Supabase) |
+| ATCSCC / FAA Ops | Queries `v_airport_operational_events_latest` → shows active FAA/NAS programs (non-NORMAL airports) from live snapshots; ATCSCC advisory text noted as local-cache-only |
+| RouteCast | Queries `v_routecast_routes` → "No live RouteCast routes configured yet" |
+
+### Doctrine labels preserved
+
+- Aviation Hazards: `Aviation Weather Truth — AviationWeather.gov`
+- ATCSCC / FAA Ops: `Current Operational Impact — FAA NAS Status`
+- RouteCast: `Forecast Weather Impact — NWS forecast proxy · NOT an official FAA delay forecast`
+
+### Audit results (2026-06-07, post secondary-tab fix)
+
+- [x] py_compile all pull scripts: PASSED
+- [x] pull_all.py --dry-run: PASSED (5/5, 71 airports, 0 errors)
+- [x] No-secret audit: PASSED
+- [x] Source doctrine audit: PASSED
+- [x] File tree audit: PASSED
+
+### Required: Paste `sql/04_placeholder_views.sql` in Supabase SQL Editor
+
+The two new placeholder views must exist in Supabase before the Aviation Hazards and RouteCast tabs can query them without a 404 error. Until then, both tabs catch the error gracefully and show the empty state.
+
 ## Phase Completion Status
 
 - [x] Phase 1 — Bootstrap / file tree
@@ -242,5 +283,6 @@ Run: `python scripts/pull/pull_all.py`
 - [x] Phase 3 — Supabase layer (bootstrap SQL + frontend connection)
 - [x] Phase 4 — Pull engine (live data ingestion scripts)
 - [x] Phase 5 — 71-airport product (airports loaded, parser fixed, dry-run 5/5)
+- [x] Phase 5b — Secondary tabs: live/demo separation, honest empty states, doctrine labels
 - [ ] Phase 6 — Exporters audit / hardening
 - [ ] Phase 7 — Full audit
