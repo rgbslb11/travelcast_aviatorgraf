@@ -19,6 +19,34 @@ function setupTabs() {
   });
 }
 
+function updateBanner() {
+  const banner = document.querySelector("#mode-banner");
+  // Reset to base class then add state variant
+  banner.className = "mode-banner";
+
+  const { connectionStatus, warnings } = appState;
+  if (connectionStatus === "configured") {
+    banner.textContent = "Supabase Connected — live views";
+    banner.classList.add("connected");
+  } else if (connectionStatus === "failed") {
+    banner.textContent = "Supabase Query Failed — using demo fallback";
+    banner.classList.add("failed");
+  } else {
+    banner.textContent = "Supabase Not Configured — demo mode";
+    banner.classList.add("demo");
+  }
+
+  if (warnings.length) {
+    const warnEl = document.querySelector("#connection-warnings");
+    if (warnEl) {
+      warnEl.style.display = "";
+      warnEl.innerHTML = warnings
+        .map(w => `<div class="warning">${w}</div>`)
+        .join("");
+    }
+  }
+}
+
 async function init() {
   setupTabs();
   loadQueue();
@@ -29,10 +57,11 @@ async function init() {
   renderRoutecast();
   renderGraphicsQueue();
   renderSourceHealth();
-  document.querySelector("#mode-banner").textContent = appState.demoModeActive ? "Demo Mode — sample data" : "Supabase Mode — live views";
+  updateBanner();
 }
 
 init().catch(err => {
   console.error(err);
-  document.querySelector("main").innerHTML = `<div class="warning">App initialization failed: ${err.message}</div>`;
+  document.querySelector("main").innerHTML =
+    `<div class="warning">App initialization failed: ${err.message}</div>`;
 });

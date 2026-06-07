@@ -14,16 +14,28 @@ export async function loadAirportStatus() {
   if (isSupabaseConfigured()) {
     try {
       const client = await getSupabaseClient();
-      const { data, error } = await client.from("v_airport_status_dashboard").select("*").order("region").order("iata");
-      if (!error && data) {
+      const { data, error } = await client
+        .from("v_airport_status_dashboard")
+        .select("*")
+        .order("region")
+        .order("iata");
+      if (!error && data && data.length > 0) {
         appState.demoModeActive = false;
+        appState.connectionStatus = 'configured';
         appState.airportStatusRecords = data;
         return data;
       }
-      appState.warnings.push(`Supabase view unavailable; using demo data. ${error?.message || ""}`);
+      const msg = error
+        ? `Supabase view query failed: ${error.message}`
+        : 'Supabase view returned no rows — check that the bootstrap SQL ran and seed data exists.';
+      appState.warnings.push(msg + ' Using demo fallback.');
+      appState.connectionStatus = 'failed';
     } catch (err) {
-      appState.warnings.push(`Supabase failed; using demo data. ${err.message}`);
+      appState.warnings.push(`Supabase connection error: ${err.message}. Using demo fallback.`);
+      appState.connectionStatus = 'failed';
     }
+  } else {
+    appState.connectionStatus = 'demo';
   }
   appState.demoModeActive = true;
   appState.airportStatusRecords = sampleAirportStatus;

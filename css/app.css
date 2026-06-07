@@ -16,6 +16,9 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Arial,Helvetica
 .app-header{display:flex;justify-content:space-between;gap:20px;align-items:center;padding:22px 28px;background:linear-gradient(180deg,#142233,#071019);border-bottom:1px solid var(--line)}
 h1{margin:0;font-size:28px;letter-spacing:.3px}.app-header p{margin:8px 0 0;color:var(--muted)}
 .mode-banner{padding:10px 14px;border:1px solid var(--line);border-radius:999px;background:var(--panel2);font-weight:700}
+.mode-banner.connected{border-color:var(--green);color:var(--green)}
+.mode-banner.failed{border-color:var(--amber);color:var(--amber)}
+.mode-banner.demo{border-color:var(--gray);color:var(--muted)}
 .tabs{display:flex;gap:8px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid var(--line);background:#0b1520;position:sticky;top:0;z-index:5}
 .tabs button,.btn{border:1px solid var(--line);background:var(--panel2);color:var(--text);border-radius:10px;padding:9px 12px;cursor:pointer;font-weight:700}
 .tabs button.active,.btn.primary{background:#1e3a5f;border-color:#3b82f6}.btn.danger{background:#3f1111;border-color:#7f1d1d}.btn.small{font-size:12px;padding:6px 8px}

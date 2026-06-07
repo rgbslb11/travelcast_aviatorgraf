@@ -4,6 +4,10 @@ export const appState = {
   graphicsQueue: [],
   sourceSystems: [],
   demoModeActive: true,
+  // 'configured' = Supabase connected and view returned data
+  // 'failed'     = Supabase configured but query errored; demo fallback in use
+  // 'demo'       = Supabase not configured; placeholder values in config.js
+  connectionStatus: 'demo',
   warnings: []
 };
 

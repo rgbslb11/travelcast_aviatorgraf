@@ -4,65 +4,86 @@ Date: 2026-06-06
 
 ## Result
 
-Ready for Day One TravelCast Prep: **Partial**
+Ready for Day One TravelCast Prep: **Yes — demo mode verified, Supabase live mode verified**
 
-## Why Partial
+## Supabase Connection Status
 
-All demo-mode files are built and code-verified. Browser runtime test is required to confirm rendering in a live browser. Supabase live mode requires credentials and schema not yet provisioned.
+- Bootstrap SQL (`sql/00_supabase_bootstrap.sql`) pasted and executed in Supabase SQL Editor: **SUCCESS**
+- Frontend connected to Supabase with anon key: **SUCCESS**
+- `v_airport_status_dashboard` view returning seeded data: **SUCCESS**
+- App banner showing "Supabase Connected — live views": **CONFIRMED**
+- Demo fallback confirmed preserved (demoMode: true → reverts to sample data): **CONFIRMED**
 
 ## Audit Script Results (2026-06-06)
 
-- [x] No-secret audit: PASSED
+- [x] No-secret audit: PASSED (anon JWT allowed in js/config.js per design; service_role key not present)
+- [x] Supabase config/placeholder audit: PASSED (LIVE mode — real credentials, demoMode: false)
+- [x] Source doctrine audit: PASSED
 - [x] JSON/GeoJSON audit: PASSED
 - [x] File tree audit: PASSED
-- [x] Source doctrine audit: PASSED
+- [x] Demo fallback audit: PASSED (all three connectionStatus states confirmed)
+- [x] Exports Supabase-mode audit: PASSED (all exporters data-source-agnostic)
 
 ## Functional Checks
 
-- [x] App files created — index.html, CSS, JS modules.
-- [x] No forbidden frameworks (no React, Next.js, Vite, Tailwind, TypeScript, package.json).
-- [x] Demo airport data created — 10 airports.
-- [x] DEN sample: GDP, Thunderstorms, 63 min avg delay, 386 max delay, 16L/16R/17R arrival runways, icon ID 04, Red impact.
-- [x] Airport Status Board module — renders table with all DATA_CONTRACT.md columns.
-- [x] Airport Detail module — source-labeled cards, graphics copy block, exports.
-- [x] Aviation Hazards module — SIGMETs, AIRMETs, CWAs, PIREPs with demo data.
-- [x] ATCSCC / FAA Ops Plan module — GDPs, planned initiatives with demo data.
-- [x] RouteCast module — 3 demo routes with per-waypoint impact.
-- [x] Graphics Queue module — localStorage persistence, add/remove/mark ready/mark used.
-- [x] Source Health module — source registry with trust tiers.
-- [x] Dashboard JSON exporter.
-- [x] Broadcast package JSON exporter.
-- [x] GeoJSON exporter — valid FeatureCollection.
-- [x] Placefile exporter — Title, Refresh, Font, Text, End.
-- [x] Add to Graphics Queue wired from both Airport Board and Airport Detail.
-- [ ] Browser runtime test — required by user.
+- [x] App loads with `python -m http.server 8080` — verified locally
+- [x] Supabase mode active — "Supabase Connected — live views" banner, green border
+- [x] Demo mode fallback — "Supabase Not Configured — demo mode" banner, gray border
+- [x] Failed connection fallback — "Supabase Query Failed — using demo fallback" banner, amber border
+- [x] #connection-warnings div renders Supabase error messages if query fails
+- [x] 10 demo airports in Supabase view — seeded by 00_supabase_bootstrap.sql
+- [x] DEN: GDP, Thunderstorms, 63 min avg delay, 386 max delay, 16L/16R/17R, icon 04, Red
+- [x] Airport Status Board — renders from Supabase view in live mode
+- [x] Airport Detail — renders from Supabase record in live mode
+- [x] Aviation Hazards — sample data (live Supabase pull engine not yet wired)
+- [x] ATCSCC / FAA Ops Plan — sample data (live pull engine not yet wired)
+- [x] RouteCast — sample data (live pull engine not yet wired)
+- [x] Graphics Queue — localStorage persistence, all actions working
+- [x] Source Health — source registry with trust tiers
+- [x] Dashboard JSON exporter — data-source-agnostic, works in live and demo mode
+- [x] Broadcast package JSON exporter — data-source-agnostic
+- [x] GeoJSON exporter — data-source-agnostic, valid FeatureCollection
+- [x] Placefile exporter — data-source-agnostic, Title/Refresh/Font/Text/End
 
 ## Security Checks
 
-- [x] No real secrets in frontend code.
-- [x] Frontend config uses REPLACE_WITH placeholders only.
-- [x] Service-role key not in any frontend file.
-- [x] .env is gitignored.
-- [x] Supabase client loaded from CDN via dynamic import only when credentials are configured.
+- [x] No service_role key in any frontend file
+- [x] Supabase anon/public JWT in js/config.js only (public key by Supabase design)
+- [x] js/config.js not committed to git with real credentials (local working copy only)
+- [x] .env is gitignored
+- [x] No private API keys (Baron, OpenWeather, etc.) in any frontend file
+- [x] RLS enabled on all 5 Supabase tables
 
 ## Doctrine Checks
 
-- [x] FAA/NAS operational status separated from NWS forecast proxy throughout.
-- [x] Commercial sources labeled enrichment only.
-- [x] Icons use canonical IDs in demo data.
-- [x] RouteCast labeled "Forecast Weather Impact — NWS forecast proxy" — not official FAA delay forecast.
-- [x] Aviation Hazards labeled "Aviation Weather Truth — AviationWeather.gov".
-- [x] FAA Ops labeled "Operational Planning — FAA ATCSCC".
+- [x] FAA/NAS operational status separated from NWS forecast proxy
+- [x] Commercial sources labeled enrichment only
+- [x] NWS forecast impact NOT labeled official FAA delay forecast
+- [x] RouteCast labeled "Forecast Weather Impact — NWS forecast proxy"
+- [x] Aviation Hazards labeled "Aviation Weather Truth — AviationWeather.gov"
+- [x] FAA Ops labeled "Operational Planning — FAA ATCSCC"
+- [x] Icons use canonical IDs
 
-## Blockers
+## Three-State Connection Banner
 
-None code-level for demo mode.
+| State | Banner Text | Color |
+|---|---|---|
+| Supabase configured + view returned data | Supabase Connected — live views | Green |
+| Supabase configured + query failed | Supabase Query Failed — using demo fallback | Amber |
+| Supabase not configured / placeholders | Supabase Not Configured — demo mode | Gray |
 
-## Next Actions
+## Remaining Before Phase 4
 
-1. Run `python -m http.server 8080` from the project root.
-2. Open `http://localhost:8080`.
-3. Validate all 7 tabs render.
-4. Test export downloads from Airport Board and Airport Detail.
-5. Add an airport to the Graphics Queue and verify localStorage persistence.
-6. Run Supabase schema after credentials are available (Phase 3).
+- Pull engine scripts (`04-build-pull-engine.md`) — write live FAA/NAS, AviationWeather, NWS data into Supabase tables
+- Aviation Hazards, RouteCast, FAA Ops panels will show live data once pull engine populates Supabase
+- No browser-side changes expected for Phase 4
+
+## Phase Completion Status
+
+- [x] Phase 1 — Bootstrap / file tree
+- [x] Phase 2 — Demo mode app (all 7 panels)
+- [x] Phase 3 — Supabase layer (bootstrap SQL + frontend connection)
+- [ ] Phase 4 — Pull engine (live data ingestion scripts)
+- [ ] Phase 5 — SQL views (upgrade to production views with separate METAR/TAF tables)
+- [ ] Phase 6 — Exporters audit / hardening
+- [ ] Phase 7 — Full audit
