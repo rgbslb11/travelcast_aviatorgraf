@@ -872,3 +872,80 @@ Removed redundant "Operational: Green" option (Green operationally means no acti
 |---|---|
 | `js/modules/airportDashboard.js` | `opImpactColor()` helper; updated `filterRecords()`; program-type options in dropdown |
 | `audit/day_one_readiness_report.md` | This section + Phase 9 audit checklist |
+
+---
+
+## Phase 8 Cleanup Pass — ATCSCC Schema Fix (2026-06-08)
+
+### Blocking error
+
+```
+HTTP 400: Could not find the 'retrieved_at' column of 'atcscc_operations_plans' in the schema cache
+```
+
+### Root cause
+
+Three payload keys in `pull_atcscc_ops_plan.py` did not match the `sql/06_operational_intelligence.sql` schema:
+
+| Script key | Table column | Fix |
+|---|---|---|
+| `retrieved_at` | `fetched_at_utc` | Rename |
+| `source_label` (not a column) | `source_system_id` | Replace with FK value `'atcscc_advisories'` |
+| `translated_text` (sections) | `translation` | Rename |
+
+The `source_label` key would have caused a second HTTP 400 after `retrieved_at` was fixed. The `translated_text` key would have caused a third HTTP 400 on the sections upsert.
+
+### Fix
+
+**`scripts/pull/pull_atcscc_ops_plan.py`:**
+
+In the plan upsert payload (Phase 6 block):
+- `'retrieved_at': utc_now()` → `'fetched_at_utc': utc_now()`
+- `'source_label': '...'` → `'source_system_id': 'atcscc_advisories'`
+
+In the Phase 4 translation loop:
+- `sec['translated_text'] = ...` → `sec['translation'] = ...` (both the success path and the error fallback)
+
+### Live run results (2026-06-08)
+
+```
+manual_url_provided
+manual_url_added
+advisory_text_fetched   text_length=11598
+sections_written        plan_id=1, count=11
+plan_stored             plan_id=1, advisory_number=159, sections=11
+pull_summary            plans_found=1, sections_parsed=11, fetch_errors=0, parse_errors=0
+```
+
+No HTTP 400 errors. Plan row and 11 section rows written to Supabase.
+
+### Verification queries
+
+Run in Supabase SQL Editor to confirm:
+
+```sql
+-- Plan row
+select advisory_number, advisory_date, title, event_time,
+       parse_status, fetched_at_utc, source_url
+from public.atcscc_operations_plans
+order by fetched_at_utc desc
+limit 5;
+
+-- Latest plan view
+select *
+from public.v_atcscc_operations_plan_latest;
+
+-- Sections
+select section_key, section_display_name, has_content,
+       left(raw_text, 80) as raw_preview,
+       left(translation, 80) as translation_preview
+from public.atcscc_operations_plan_sections
+order by section_order;
+```
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `scripts/pull/pull_atcscc_ops_plan.py` | `fetched_at_utc` + `source_system_id` in plan row; `translation` in section rows |
+| `audit/day_one_readiness_report.md` | This section |

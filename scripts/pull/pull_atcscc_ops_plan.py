@@ -611,7 +611,7 @@ def main() -> None:
         # ── Phase 4: Translate ───────────────────────────────────────────
         for sec in sections:
             try:
-                sec['translated_text'] = _translate_section(
+                sec['translation'] = _translate_section(
                     sec['section_key'], sec['raw_text']
                 )
             except Exception as e:
@@ -620,7 +620,7 @@ def main() -> None:
                     'section': sec.get('section_key'),
                     'error': str(e),
                 })
-                sec['translated_text'] = sec.get('raw_text', '')
+                sec['translation'] = sec.get('raw_text', '')
 
         # ── Phase 5: Parse metadata ──────────────────────────────────────
         title = _title_from_url(url)
@@ -679,9 +679,9 @@ def main() -> None:
                 'valid_from_utc': meta.get('valid_from_utc'),
                 'valid_until_utc': meta.get('valid_until_utc'),
                 'raw_text': plain_text,
-                'retrieved_at': utc_now(),
+                'fetched_at_utc': utc_now(),
+                'source_system_id': 'atcscc_advisories',
                 'parse_status': 'ok' if sections else 'no_sections',
-                'source_label': 'Current Operational Impact — FAA NAS / ATCSCC',
             }
             plan_id = _upsert_plan(sb_url, sb_key, plan_row)
             if plan_id is not None:
