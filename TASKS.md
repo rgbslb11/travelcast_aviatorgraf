@@ -71,3 +71,31 @@
 - [x] Run file tree audit script scaffold.
 - [x] Run doctrine audit script scaffold.
 - [x] Write readiness report.
+
+## Phase 11 — 71-Airport Product (completed)
+
+- [x] 71 focus airports loaded to Supabase (11 regions).
+- [x] Airport Status Board: region filter, search, operational/forecast impact filters.
+- [x] Airport Detail: 5 SQL views deployed.
+- [x] METAR/TAF parser fixed (variable wind direction).
+- [x] pull_all.py --dry-run verified at 71-airport scale.
+
+## Phase 12 — Operational Intelligence Expansion (completed)
+
+- [x] sql/06 migration: 4 tables, 5 views, 6 starter routes.
+- [x] Aviation Hazards: SIGMET/AIRMET/CWA ingestion from AviationWeather.gov.
+- [x] ATCSCC Operations Plan: auto-discovery + manual --url flag.
+- [x] RouteCast: configured-route enrichment from local caches.
+- [x] All 3 frontend panels wired to live Supabase views.
+- [x] Phase 9 audit passed: Operational Intelligence Audit Passed.
+
+## Phase 13 — Hardening and Runbook (completed)
+
+- [x] docs/DAY_ONE_OPERATOR_RUNBOOK.md
+- [x] docs/TROUBLESHOOTING.md
+- [x] docs/SOURCE_FAILURE_PLAYBOOK.md
+- [x] docs/BROADCAST_USE_GUARDRAILS.md
+- [x] docs/COMMAND_REFERENCE.md
+- [x] Source Health: mission-critical stale/no_runs alert banner.
+- [x] README.md updated to reflect current status.
+- [x] All audit checks pass at Phase 10 level.

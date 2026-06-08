@@ -130,15 +130,40 @@ The demo app exports:
 - GeoJSON FeatureCollection
 - GRLevelX-style placefile text
 
+## Current status
+
+**Phase 9 — Operational Intelligence Audit: PASSED**
+
+- Day-One Local Prep Ready (Phase 7 audit passed)
+- Operational Intelligence Local Prep Usable (Phase 9 audit passed)
+- 71 focus airports seeded and live in Supabase
+- Aviation Hazards (SIGMET/AIRMET/CWA), ATCSCC Operations Plan, and RouteCast all live
+- All 8 export paths verified
+- 6/6 pull scripts pass dry-run at 71-airport scale
+- Phase 10 hardening/runbook complete
+
+See `audit/day_one_readiness_report.md` for full audit history.
+
+## Operator documentation
+
+- `docs/DAY_ONE_OPERATOR_RUNBOOK.md` — step-by-step operations guide
+- `docs/COMMAND_REFERENCE.md` — all commands
+- `docs/TROUBLESHOOTING.md` — common issues and fixes
+- `docs/SOURCE_FAILURE_PLAYBOOK.md` — what to do when each source fails
+- `docs/BROADCAST_USE_GUARDRAILS.md` — what this tool's output may and may not claim on-air
+
 ## Day One checklist
 
-- [ ] App runs locally.
-- [ ] Demo mode works.
-- [ ] Airport Status Board renders.
-- [ ] DEN detail renders.
-- [ ] Graphics Queue works.
-- [ ] JSON export works.
-- [ ] GeoJSON export works.
-- [ ] Placefile export works.
-- [ ] Source Health renders.
-- [ ] No secrets exist in frontend files.
+- [x] App runs locally.
+- [x] Demo mode works.
+- [x] Airport Status Board renders — 71 airports, filters verified.
+- [x] Airport Detail renders.
+- [x] Aviation Hazards renders live SIGMETs/AIRMETs/CWAs.
+- [x] ATCSCC / FAA Ops Plan renders.
+- [x] RouteCast renders 6 starter routes.
+- [x] Graphics Queue works — all 6 actions.
+- [x] JSON export works — source_mode verified.
+- [x] GeoJSON export works — feature_count verified.
+- [x] Placefile export works.
+- [x] Source Health renders with live feed-run telemetry.
+- [x] No secrets exist in frontend files.

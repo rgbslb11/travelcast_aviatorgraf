@@ -71,6 +71,21 @@ function checklistHtml() {
 function liveSourcesHtml(sources) {
   const tierLabel = { 1: "Official", 2: "Enrichment", 3: "Commercial" };
 
+  // Alert banner for official mission-critical sources that are stale or have no runs
+  const criticalAlerts = sources.filter(
+    s => s.official_source && s.mission_critical_allowed &&
+         (s.freshness_status === "stale" || s.freshness_status === "no_runs")
+  );
+  let alertHtml = "";
+  if (criticalAlerts.length > 0) {
+    const names = criticalAlerts.map(s => safeText(s.display_name)).join(", ");
+    alertHtml = `<div class="warning" style="margin-bottom:12px">
+      <strong>Official source alert:</strong> ${names} — freshness is
+      ${criticalAlerts.map(s => safeText(s.freshness_status)).join(", ")}.
+      Run <code>pull_all.py</code> and verify before using data on-air.
+    </div>`;
+  }
+
   const rows = sources.map(s => {
     const freshCls = s.freshness_status === "fresh"   ? "green"
       : s.freshness_status === "aging"   ? "amber"
@@ -95,6 +110,7 @@ function liveSourcesHtml(sources) {
   return `<div class="card">
     <h2>Source Health</h2>
     <p class="muted">Live feed-run telemetry from Supabase. Run <code>pull_all.py</code> to update.</p>
+    ${alertHtml}
   </div>
   <div class="table-shell"><table>
     <thead><tr>

@@ -1104,6 +1104,115 @@ No code files modified — no blocking defects found requiring changes.
 
 ---
 
+## Phase 10 — Operational Intelligence Hardening and Runbook (2026-06-08)
+
+### Objective
+
+Harden the expanded Phase 8/9 product for repeatable local operations. No new product features. Focus on runbooks, troubleshooting, source-failure handling, and operational clarity.
+
+### Verdict
+
+> **Phase 10 Complete — Product Ready for Repeatable Local Operations**
+
+All runbook and hardening items complete. All automated checks pass. Source Health alert added for mission-critical stale/no_runs sources. Documentation covers all operator scenarios.
+
+---
+
+### Automated checks (Phase 10)
+
+| Check | Result | Detail |
+|---|---|---|
+| `py_compile scripts/pull/*.py` | PASSED | 8 scripts, 0 syntax errors |
+| `py_compile scripts/load/*.py` | PASSED | 1 script, 0 errors |
+| `py_compile scripts/audit/*.py` | PASSED | 3 scripts, 0 errors |
+| `audit_no_secrets.py` | PASSED | No secrets introduced in Phase 10 |
+| `audit_source_doctrine.py` | PASSED | No doctrine violations in new docs or JS |
+| `audit_file_tree.py` | PASSED | All required files present |
+| `pull_aviation_hazards.py --dry-run` | PASSED | 18 SIGMETs, 38 AIRMETs, 2 CWAs, 0 errors |
+| `pull_atcscc_ops_plan.py --dry-run` | PASSED | 0 ops-plan URLs (3 CDM GDPs found — LAS, SAN, SFO); no system-wide plan today |
+| `rebuild_routecast_snapshots.py --dry-run` | PASSED | 6 routes, 1 hazard mention |
+| `pull_all.py --dry-run` | PASSED | 6/6 scripts, 0 failed, 74 sec, `routecast_enrichment_ok: true` |
+
+---
+
+### Docs created
+
+| File | Purpose |
+|---|---|
+| `docs/DAY_ONE_OPERATOR_RUNBOOK.md` | Step-by-step operations guide: server start, pulls, all 7 app tabs, exports, broadcast-readiness criteria |
+| `docs/TROUBLESHOOTING.md` | 25+ scenarios: demo mode, Supabase errors, missing env, filter issues, stale data, git config |
+| `docs/SOURCE_FAILURE_PLAYBOOK.md` | Per-source failure guide for all 8 sources: what it controls, operator language, when to stop broadcasting |
+| `docs/BROADCAST_USE_GUARDRAILS.md` | On-air language rules: NWS proxy, FAA truth, hazard attribution, cancellation/diversion constraints, pre-air checklist |
+| `docs/COMMAND_REFERENCE.md` | All operational commands: server, pulls, audits, syntax checks, git, SQL migrations, env/config format |
+
+---
+
+### Frontend hardening (Phase 10)
+
+**`js/modules/sourceHealth.js`:**
+Added mission-critical alert banner in `liveSourcesHtml()`.
+
+When any source with `official_source = true` AND `mission_critical_allowed = true` has `freshness_status` of `stale` or `no_runs`, a warning banner appears in the Source Health card:
+
+```
+Official source alert: [Source Name] — freshness is stale/no_runs.
+Run pull_all.py and verify before using data on-air.
+```
+
+Enrichment and commercial sources (tier 2/3) do NOT trigger this alert — only Official/Mission-Critical sources do. This avoids noisy false alarms for non-operational sources.
+
+---
+
+### Control file updates
+
+| File | Change |
+|---|---|
+| `README.md` | Current status (Phase 9 passed), operator docs section, Day One checklist checked |
+| `TASKS.md` | Phases 11–13 added reflecting actual completed work |
+| `ACCEPTANCE_CRITERIA.md` | All criteria checked, Phase 10 hardening criteria added |
+
+---
+
+### Source doctrine preserved in all new docs
+
+| Doc | Doctrine check |
+|---|---|
+| `DAY_ONE_OPERATOR_RUNBOOK.md` | NWS proxy labeled correctly; FAA NAS = operational truth; AviationWeather = aviation weather truth |
+| `TROUBLESHOOTING.md` | No invented guidance that implies NWS data is FAA operational truth |
+| `SOURCE_FAILURE_PLAYBOOK.md` | Each source section explicitly states its authority tier and limits |
+| `BROADCAST_USE_GUARDRAILS.md` | Direct rules against mislabeling; correct language examples provided |
+| `COMMAND_REFERENCE.md` | Commands only — no doctrine content |
+
+---
+
+### Remaining limitations (Phase 10)
+
+| Limitation | Impact | Resolution path |
+|---|---|---|
+| Browser/UI confirmation items from Phase 9 checklist not yet operator-confirmed | 20 visual items need operator browser test | Operator must confirm on next session |
+| No active ATCSCC system-wide Operations Plan in today's data | `no_plan_found` honest state; CDM GDP advisories auto-discovered but filtered (not ops-plan format) | Use `--url` when system-wide plan is issued |
+| RouteCast enrichment is text-matching only | Supplemental — not official FAA route data | By design; labeled correctly |
+| AIRMET text available as synthetic summary only | Full AIRMET product text not available from endpoint | Future: ADDS AIRMET text feed |
+
+---
+
+### Files modified in Phase 10
+
+| File | Change |
+|---|---|
+| `docs/DAY_ONE_OPERATOR_RUNBOOK.md` | Created |
+| `docs/TROUBLESHOOTING.md` | Created |
+| `docs/SOURCE_FAILURE_PLAYBOOK.md` | Created |
+| `docs/BROADCAST_USE_GUARDRAILS.md` | Created |
+| `docs/COMMAND_REFERENCE.md` | Created |
+| `js/modules/sourceHealth.js` | Mission-critical stale/no_runs alert banner added |
+| `README.md` | Current status, operator docs section, checklist updated |
+| `TASKS.md` | Phases 11–13 added |
+| `ACCEPTANCE_CRITERIA.md` | All criteria checked, Phase 10 criteria added |
+| `audit/day_one_readiness_report.md` | Phase 10 section |
+
+---
+
 ## Phase Completion Status
 
 - [x] Phase 1 — Bootstrap / file tree
@@ -1119,3 +1228,4 @@ No code files modified — no blocking defects found requiring changes.
 - [x] **Phase 8 hotfix — Aviation Hazards write path: timestamp conversion + CWA field fix + deduplication; 59/59 records written to Supabase**
 - [x] **Phase 8 Cleanup Pass — Tops FL notation fix, RouteCast source_id, ATCSCC --url flag, operational filter fix, ATCSCC schema fix**
 - [x] **Phase 9 — Operational Intelligence Audit: PASSED → Operational Intelligence Audit Passed — Local Prep Usable**
+- [x] **Phase 10 — Hardening and Runbook: COMPLETE → Product Ready for Repeatable Local Operations**
