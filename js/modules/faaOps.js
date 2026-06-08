@@ -20,13 +20,15 @@ async function renderLiveFaaOps() {
 
   let events = [];
   let allAirports = [];
+  let plan = null;
+  let sections = [];
   let queryError = null;
   let fetchedAt = null;
 
   try {
     const client = await getSupabaseClient();
 
-    // All airports with their latest operational snapshot
+    // Query 1: All airports with their latest operational snapshot
     const { data: allData, error: allErr } = await client
       .from("v_airport_operational_events_latest")
       .select("*")
@@ -40,6 +42,37 @@ async function renderLiveFaaOps() {
     events = allAirports.filter(
       r => r.current_status_code && r.current_status_code !== "NORMAL"
     );
+
+    // Query 2: Latest ATCSCC Operations Plan (failure is non-fatal)
+    try {
+      const { data: planData, error: planErr } = await client
+        .from("v_atcscc_operations_plan_latest")
+        .select("*")
+        .limit(1);
+      if (planErr) {
+        console.warn("faaOps: v_atcscc_operations_plan_latest query failed:", planErr.message);
+      } else {
+        plan = (planData && planData.length > 0) ? planData[0] : null;
+      }
+    } catch (planEx) {
+      console.warn("faaOps: ops plan query exception:", planEx.message);
+    }
+
+    // Query 3: Plan sections, only if a plan was found (failure is non-fatal)
+    if (plan) {
+      try {
+        const { data: secData, error: secErr } = await client
+          .from("v_atcscc_operations_plan_sections")
+          .select("*");
+        if (secErr) {
+          console.warn("faaOps: v_atcscc_operations_plan_sections query failed:", secErr.message);
+        } else {
+          sections = secData || [];
+        }
+      } catch (secEx) {
+        console.warn("faaOps: plan sections query exception:", secEx.message);
+      }
+    }
   } catch (err) {
     queryError = err.message;
   }
@@ -55,10 +88,13 @@ async function renderLiveFaaOps() {
   const html =
     headerHtml(fetchedAt) +
     activeEventsCard(events, allAirports.length) +
-    atcsccAdvisoryNotice();
+    opsPlancardHtml(plan, sections) +
+    sectionCardsHtml(sections);
 
   container.innerHTML = html;
 }
+
+// ── Active events card (existing, unchanged) ────────────────────────────
 
 function activeEventsCard(events, totalAirports) {
   if (events.length === 0) {
@@ -97,14 +133,101 @@ function activeEventsCard(events, totalAirports) {
   </div>`;
 }
 
-function atcsccAdvisoryNotice() {
+// ── ATCSCC Operations Plan card ─────────────────────────────────────────
+
+function opsPlancardHtml(plan, sections) {
+  // No data stored in Supabase yet
+  if (plan === null) {
+    return `<div class="card">
+      <h3>ATCSCC Operations Plan</h3>
+      <p class="muted">No Operations Plan stored in Supabase yet. Run <code>pull_atcscc_ops_plan.py</code> to fetch and store the latest plan.</p>
+      <span class="source-doctrine">Current Operational Impact — FAA NAS / ATCSCC</span>
+    </div>`;
+  }
+
+  // Plan fetch ran but no advisory was issued today
+  if (plan.parse_status === "no_plan_found") {
+    return `<div class="card">
+      <h3>ATCSCC Operations Plan</h3>
+      <p class="muted">No ATCSCC Operations Plan advisory was found in today's FAA NAS data. Active GDPs and events are shown in the table above.</p>
+      <p class="muted">Last checked: ${formatDateTime(plan.fetched_at_utc)}</p>
+      <span class="source-doctrine">Current Operational Impact — FAA NAS / ATCSCC</span>
+    </div>`;
+  }
+
+  // Plan has content (parse_status = 'ok' or 'partial')
+  const sourceLink = plan.source_url
+    ? `<div><a href="${safeText(plan.source_url)}" class="muted" target="_blank" rel="noopener">Source Advisory ↗</a></div>`
+    : "";
+
+  const titleLine = plan.title
+    ? `<p class="muted" style="font-size:12px">${safeText(plan.title)}</p>`
+    : "";
+
   return `<div class="card">
-    <h3>ATCSCC Advisory Feed</h3>
-    <p class="muted">ATCSCC advisory text (NOTAMs, traffic initiatives, reroutes) is fetched by the pull engine and cached locally in <code>data/raw/atcscc_advisories.json</code>.</p>
-    <p class="muted">Full advisory text is not yet stored in Supabase. Run <code>pull_atcscc_ops_plan.py</code> to refresh the local cache.</p>
-    <span class="source-doctrine">${DOCTRINE_LABEL} · Local cache only</span>
+    <h3>ATCSCC Operations Plan</h3>
+    <div style="display:flex;flex-wrap:wrap;gap:16px;margin:8px 0 12px">
+      <div><span class="muted">Advisory:</span> <strong>${plan.advisory_number ? "#" + safeText(plan.advisory_number) : "—"}</strong></div>
+      <div><span class="muted">Date:</span> <strong>${safeText(plan.advisory_date) || "—"}</strong></div>
+      <div><span class="muted">Event Time:</span> <strong>${safeText(plan.event_time) || "—"}</strong></div>
+      <div><span class="muted">Fetched:</span> ${formatDateTime(plan.fetched_at_utc)}</div>
+      ${sourceLink}
+    </div>
+    ${titleLine}
+    <span class="source-doctrine">Current Operational Impact — FAA NAS / ATCSCC</span>
   </div>`;
 }
+
+// ── Plan section cards ──────────────────────────────────────────────────
+
+function sectionCardsHtml(sections) {
+  if (!sections || sections.length === 0) return "";
+
+  const contentSections = sections.filter(s => s.has_content === true || s.has_content === "true");
+  const nilSections = sections.filter(s => s.has_content !== true && s.has_content !== "true");
+
+  const contentHtml = contentSections.map(section => {
+    let translationHtml = "";
+    if (
+      section.translation &&
+      section.translation !== section.raw_text
+    ) {
+      const cleanTranslation = section.translation
+        .replace("TravelCast translation — generated from FAA ATCSCC source text.", "")
+        .trim();
+      translationHtml = `<p style="margin:10px 0 0;font-size:12px;color:var(--text)"><strong>Plain language:</strong> ${safeText(cleanTranslation)}</p>
+      <p class="source-doctrine" style="margin:4px 0 0">TravelCast translation — generated from FAA ATCSCC source text.</p>`;
+    }
+
+    return `<div class="card">
+      <h4 style="margin:0 0 8px">${safeText(section.section_display_name)}</h4>
+      <div class="pre" style="font-size:12px;line-height:1.5;white-space:pre-wrap">${safeText(section.raw_text)}</div>
+      ${translationHtml}
+    </div>`;
+  }).join("");
+
+  let nilHtml = "";
+  if (nilSections.length > 0) {
+    const nilNames = nilSections.map(s => safeText(s.section_display_name)).join(", ");
+    nilHtml = `<div class="card">
+      <p class="muted" style="font-size:12px">NIL or empty sections: ${nilNames}</p>
+      <span class="source-doctrine">Current Operational Impact — FAA NAS / ATCSCC</span>
+    </div>`;
+  }
+
+  return contentHtml + nilHtml;
+}
+
+// ── Next webinar extractor ──────────────────────────────────────────────
+
+function nextWebinarLine(sections) {
+  if (!sections || sections.length === 0) return null;
+  const found = sections.find(s => s.section_key === "NEXT_WEBINAR" || s.section_display_name === "NEXT_WEBINAR");
+  if (!found || !found.raw_text) return null;
+  return found.raw_text.trim() || null;
+}
+
+// ── Shared header / loading ─────────────────────────────────────────────
 
 function headerHtml(fetchedAt) {
   const ts = fetchedAt ? `· ${formatDateTime(fetchedAt)}` : "";

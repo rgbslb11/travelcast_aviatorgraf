@@ -531,6 +531,108 @@ No code files modified — no blocking defects found requiring changes.
 
 ---
 
+---
+
+## Phase 8 — Operational Intelligence Expansion (2026-06-08)
+
+### Objective
+
+Wire up real data for three panels previously showing honest empty states:
+- ATCSCC / FAA Ops: add ATCSCC Operations Plan text (parsed sections + translation)
+- Aviation Hazards: full SIGMET/AIRMET/CWA ingestion from AviationWeather.gov
+- RouteCast: configured-route dashboard joining real airport status
+
+### SQL migration: `sql/06_operational_intelligence.sql`
+
+**Paste in Supabase SQL Editor.** Creates 4 new tables, 5 views (including replacements for the Phase 5b placeholder views).
+
+| Object | Type | Notes |
+|---|---|---|
+| `atcscc_operations_plans` | table | UNIQUE on (advisory_number, advisory_date); parse_status ok/partial/failed/no_plan_found |
+| `atcscc_operations_plan_sections` | table | ON DELETE CASCADE; 16 section keys; has_content flag |
+| `aviation_hazard_products` | table | UNIQUE on hazard_id; geometry_geojson; affected_airports text[] |
+| `routecast_routes` | table | text PK (e.g. DFW-JFK); active flag; references airports |
+| `v_atcscc_operations_plan_latest` | view | Latest plan by advisory_date desc, id desc |
+| `v_atcscc_operations_plan_sections` | view | Sections joined to plan, ordered by section_order |
+| `v_aviation_hazards_latest` | view | REPLACES placeholder; active where ends_at_utc > now() |
+| `v_routecast_routes` | view | REPLACES placeholder; active routes joined to airports |
+| `v_routecast_dashboard` | view | Routes + double-join to v_airport_status_dashboard for origin + destination; yields route_impact_color, prep_status |
+
+6 starter routes seeded (ON CONFLICT DO NOTHING): DFW-JFK, DFW-ORD, DFW-ATL, SFO-ORD, JFK-MIA, DEN-DTW.
+
+### New pull scripts
+
+| Script | Purpose | Endpoints |
+|---|---|---|
+| `scripts/pull/pull_aviation_hazards.py` | SIGMET + AIRMET + CWA from AviationWeather.gov | `/sigmet?format=json`, `/airmet?format=json`, `/cwa?format=json` |
+| `scripts/pull/pull_atcscc_ops_plan.py` (rewritten) | Extracts advisory URLs from cached faa_nas_status.json; filters for ops-plan advisories; parses sections; upserts to Supabase | fly.faa.gov advisory pages (HTML) |
+| `scripts/pull/rebuild_routecast_snapshots.py` | Route enrichment from local caches only — no new API calls | local data/raw/ |
+| `scripts/pull/pull_all.py` (updated) | Added pull_aviation_hazards.py (script #3); added rebuild_routecast_snapshots.py as optional enrichment step; added --skip-routecast flag | — |
+
+### Frontend JS updates
+
+| Module | Change |
+|---|---|
+| `js/modules/faaOps.js` | Queries `v_atcscc_operations_plan_latest` + `v_atcscc_operations_plan_sections`; renders ops plan card with advisory#/date/event_time; section cards with raw text + plain-language translation; NIL section summary; honest empty state if no plan stored |
+| `js/modules/aviationWeather.js` | Updated to real `aviation_hazard_products` column names: begins_at_utc, ends_at_utc, altitude_top_ft, raw_text, translation, subtype, affected_airports; groups by hazard_type; collapsible raw text; real FL altitude notation |
+| `js/modules/routecast.js` | Queries `v_routecast_dashboard`; new `liveRouteCard()` with origin+dest op/forecast panels; prep_status badge (Significant/Elevated/Monitor/Normal); route_impact_color badge; `routeCard()` unchanged for demo mode |
+
+### Audit results (2026-06-08, Phase 8)
+
+| Check | Result | Detail |
+|---|---|---|
+| `py_compile scripts/pull/*.py` | PASSED | 8 scripts (including 2 new), 0 syntax errors |
+| `py_compile scripts/load/*.py` | PASSED | 1 script, 0 errors |
+| `py_compile scripts/audit/*.py` | PASSED | 3 scripts, 0 errors |
+| `pull_all.py --dry-run` | PASSED | 6/6 scripts, 71 airports, 0 failed; routecast 404 expected (sql/06 not yet applied) |
+| `pull_atcscc_ops_plan.py --dry-run` | PASSED | 6 advisory URLs found; 0 ops-plan URLs (normal — no active system-wide CDP today); NOTAM advisories 4; `no_plan_found` logged correctly |
+| `pull_aviation_hazards.py --dry-run` | PASSED | 20 SIGMETs, 38 AIRMETs, 3 CWAs, 61 total, 0 parse errors, 0 fetch errors |
+| `rebuild_routecast_snapshots.py --dry-run` | PASSED | Exits gracefully: routecast_routes table not yet in Supabase (pending sql/06) |
+| `audit_no_secrets.py` | PASSED | No new secrets introduced |
+| `audit_source_doctrine.py` | PASSED | __pycache__ false positive fixed (now excludes .pyc and __pycache__) |
+| `audit_file_tree.py` | PASSED | All required files present |
+
+### AviationWeather.gov URL fix (2026-06-08)
+
+Initial build used `hazard=SIGMET` and `hazard=AIRMET` query params on the `/sigmet` endpoint — both return HTTP 400.
+
+Corrected endpoints:
+- SIGMETs: `https://aviationweather.gov/api/data/sigmet?format=json` (no hazard param)
+- AIRMETs: `https://aviationweather.gov/api/data/airmet?format=json` (separate endpoint, different schema)
+
+AIRMET endpoint has no raw product text and no explicit id. Script builds synthetic hazard_id from `region+hazard+validTimeFrom` and synthetic raw_text from available fields. Translation labels this "AIRMET for region [X]" with full attribution.
+
+### Source doctrine preserved
+
+| Panel | Doctrine label | NWS proxy notice |
+|---|---|---|
+| ATCSCC / FAA Ops | Current Operational Impact — FAA NAS / ATCSCC | N/A (this is operational, not forecast) |
+| Aviation Hazards | Aviation Weather Truth — AviationWeather.gov | N/A |
+| RouteCast origin/dest | Current Operational Impact — FAA NAS Status | per card |
+| RouteCast card footer | Forecast Weather Impact — NWS forecast proxy · NOT an official FAA delay forecast | ✓ |
+
+Translation layers always append "TravelCast translation — generated from [source] source text." and never invent hazard data, routes, or impacts.
+
+### Operator action required
+
+1. **Paste `sql/06_operational_intelligence.sql`** in Supabase SQL Editor — creates 4 tables, 5 views, seeds 6 routes
+2. **Run `python scripts/pull/pull_aviation_hazards.py`** — writes SIGMET/AIRMET/CWA to Supabase
+3. **Run `python scripts/pull/pull_atcscc_ops_plan.py`** — writes ops plan if an ATCSCC advisory is active
+4. **Run `python scripts/pull/pull_all.py`** for a full orchestrated pull including routecast enrichment
+
+After sql/06 is applied, the RouteCast tab will show 6 configured starter routes with live airport status. Aviation Hazards will show real SIGMETs, AIRMETs, and CWAs. ATCSCC / FAA Ops will show the latest Operations Plan if one is active.
+
+### Known limitations (Phase 8)
+
+| Limitation | Impact | Resolution |
+|---|---|---|
+| No active ATCSCC system-wide Operations Plan in today's FAA NAS data | Ops plan panel shows "no_plan_found" honest state; GDPs still shown in active events table | Normal — ops plans are issued only during major NAS management events |
+| AIRMET endpoint returns only region/time/hazard summary, no raw product text | Translation says "AIRMET [type] FOR REGION [X] VALID [time]"; no detailed text available from this endpoint | Upgrade path: subscribe to ADDS AIRMET text if needed |
+| routecast_routes 404 until sql/06 is applied | rebuild_routecast_snapshots.py exits gracefully | Apply sql/06 |
+| RouteCast translation is text-matching enrichment, not official route impact | Always labeled "NOT an official FAA delay forecast" | By design |
+
+---
+
 ## Phase Completion Status
 
 - [x] Phase 1 — Bootstrap / file tree
@@ -542,3 +644,4 @@ No code files modified — no blocking defects found requiring changes.
 - [x] Phase 6 — Exporters audit / day-one hardening (all 4 exporters hardened, Graphics Queue improved, Source Health async + operator checklist)
 - [x] Phase 6 Closeout — Browser-verified, Source Health freshness fixed (SQL + JS), all 8 export paths audited
 - [x] **Phase 7 — Full Day-One Audit: PASSED → Day-One Local Prep Ready**
+- [x] **Phase 8 — Operational Intelligence Expansion: SQL migration + 4 pull scripts + 3 frontend modules built and compile-verified**

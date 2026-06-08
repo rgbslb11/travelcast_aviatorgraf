@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Orchestrator — run all TravelCast pull scripts in sequence.
 
-Execution order:
-  1. pull_faa_nas_status.py        (FAA NAS operational data → snapshots + feed_runs)
-  2. pull_aviationweather_metar_taf.py  (METAR/TAF raw cache + feed_runs)
-  3. pull_nws_forecasts.py         (NWS forecast cache + feed_runs)
-  4. pull_atcscc_ops_plan.py       (ATCSCC advisory cache + feed_runs)
-  5. rebuild_airport_status_snapshots.py  (comprehensive snapshot merge)
+Execution order (main scripts):
+  1. pull_faa_nas_status.py              (FAA NAS operational data → snapshots + feed_runs)
+  2. pull_aviationweather_metar_taf.py   (METAR/TAF raw cache + feed_runs)
+  3. pull_aviation_hazards.py            (SIGMETs, AIRMETs, PIREPs raw cache + feed_runs)
+  4. pull_nws_forecasts.py               (NWS forecast cache + feed_runs)
+  5. pull_atcscc_ops_plan.py             (ATCSCC advisory cache + feed_runs)
+  6. rebuild_airport_status_snapshots.py (comprehensive snapshot merge)
+
+Optional enrichment (runs after main scripts, failure does not affect exit code):
+  7. rebuild_routecast_snapshots.py      (RouteCast context builder — requires Supabase)
 
 Usage:
-  python pull_all.py [--dry-run] [--limit N] [--skip-rebuild]
+  python pull_all.py [--dry-run] [--limit N] [--skip-rebuild] [--skip-routecast]
 """
 from __future__ import annotations
 import argparse, subprocess, sys, time
@@ -21,10 +25,12 @@ from lib_pull import load_env, utc_now, log
 SCRIPTS = [
     'pull_faa_nas_status.py',
     'pull_aviationweather_metar_taf.py',
+    'pull_aviation_hazards.py',
     'pull_nws_forecasts.py',
     'pull_atcscc_ops_plan.py',
 ]
 REBUILD_SCRIPT = 'rebuild_airport_status_snapshots.py'
+ROUTECAST_SCRIPT = 'rebuild_routecast_snapshots.py'
 
 PULL_DIR = Path(__file__).parent
 
@@ -49,6 +55,8 @@ def main() -> None:
                         help='Pass --limit N to all scripts')
     parser.add_argument('--skip-rebuild', action='store_true',
                         help='Skip rebuild_airport_status_snapshots.py after individual pulls')
+    parser.add_argument('--skip-routecast', action='store_true',
+                        help='Skip the optional rebuild_routecast_snapshots.py enrichment step')
     args = parser.parse_args()
 
     load_env()
@@ -74,7 +82,27 @@ def main() -> None:
         ok, elapsed = run(REBUILD_SCRIPT, shared)
         results[REBUILD_SCRIPT] = {'ok': ok, 'elapsed_s': elapsed}
 
-    # Summary
+    # Optional enrichment: RouteCast context builder
+    # Failure here does NOT affect the main exit code or failed-scripts count.
+    routecast_ok: bool | None = None
+    if not args.skip_routecast:
+        log('routecast_enrichment_start', {'script': ROUTECAST_SCRIPT})
+        try:
+            ok, elapsed = run(ROUTECAST_SCRIPT, shared)
+            routecast_ok = ok
+            if not ok:
+                log('routecast_enrichment_failed', {
+                    'script': ROUTECAST_SCRIPT,
+                    'elapsed_s': elapsed,
+                    'note': 'optional step — main run not affected',
+                })
+            else:
+                log('routecast_enrichment_done', {'script': ROUTECAST_SCRIPT, 'elapsed_s': elapsed})
+        except Exception as exc:
+            routecast_ok = False
+            log('routecast_enrichment_error', {'error': str(exc), 'note': 'optional step — main run not affected'})
+
+    # Summary (main scripts only — routecast is excluded from pass/fail counts)
     passed = [s for s, r in results.items() if r['ok']]
     failed = [s for s, r in results.items() if not r['ok']]
     total_elapsed = sum(r['elapsed_s'] for r in results.values())
@@ -88,6 +116,7 @@ def main() -> None:
         'failed': len(failed),
         'failed_scripts': failed,
         'dry_run': args.dry_run,
+        'routecast_enrichment_ok': routecast_ok,
     })
 
     if failed:
