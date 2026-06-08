@@ -949,3 +949,173 @@ order by section_order;
 |---|---|
 | `scripts/pull/pull_atcscc_ops_plan.py` | `fetched_at_utc` + `source_system_id` in plan row; `translation` in section rows |
 | `audit/day_one_readiness_report.md` | This section |
+
+---
+
+## Phase 9 — Operational Intelligence Audit (2026-06-08)
+
+### Objective
+
+Full audit of the expanded Phase 8 product. Covers pull scripts, frontend modules, exporters, security, and source doctrine. Automated checks run and verified. Browser/UI items documented for operator confirmation.
+
+### Verdict
+
+> **Operational Intelligence Audit Passed — Local Prep Usable**
+
+No blocking defects found. All automated checks pass. Security and doctrine requirements met across all three new panels. Pull engine runs 6/6 scripts clean at 71-airport scale in 57 seconds.
+
+---
+
+### Automated checks
+
+| Check | Result | Detail |
+|---|---|---|
+| `py_compile scripts/pull/*.py` | PASSED | 8 scripts, 0 syntax errors |
+| `py_compile scripts/load/*.py` | PASSED | 1 script, 0 errors |
+| `py_compile scripts/audit/*.py` | PASSED | 3 scripts, 0 errors |
+| `audit_no_secrets.py` | PASSED | No service_role key; anon JWT only in js/config.js (permitted) |
+| `audit_source_doctrine.py` | PASSED | No forbidden mislabeling phrases |
+| `audit_file_tree.py` | PASSED | All required files present |
+| `pull_aviation_hazards.py --dry-run` | PASSED | 18 SIGMETs, 38 AIRMETs, 3 CWAs, 57 total, 0 parse errors, 0 fetch errors |
+| `pull_atcscc_ops_plan.py --dry-run` | PASSED | 0 ops-plan URLs (no active system-wide plan today); 4 NOTAM advisories; `no_plan_found` logged correctly |
+| `rebuild_routecast_snapshots.py --dry-run` | PASSED | 6 routes; `source_system_id: routecast`; 1 route with hazard mention |
+| `pull_all.py --dry-run` | PASSED | 6/6 scripts, 0 failed; 71 airports; 57.22 sec; `routecast_enrichment_ok: true` |
+
+#### pull_all.py --dry-run breakdown (2026-06-08)
+
+| Script | Result | Key metrics |
+|---|---|---|
+| `pull_faa_nas_status.py` | PASSED | 71 airports, 9 FAA events, endpoint ok |
+| `pull_aviationweather_metar_taf.py` | PASSED | METAR 71/71, TAF 71/71, 0 parse errors, 0 fetch errors |
+| `pull_aviation_hazards.py` | PASSED | 18 SIGMETs, 38 AIRMETs, 3 CWAs, 0 errors |
+| `pull_nws_forecasts.py` | PASSED | 71 forecasts cached, 0 errors |
+| `pull_atcscc_ops_plan.py` | PASSED | 0 plans, 4 NOTAM advisories, no_plan_found |
+| `rebuild_routecast_snapshots.py` | PASSED | 6 routes, `routecast_enrichment_ok: true` |
+| **pull_all.py orchestrator** | **6/6 PASSED** | **57 sec, 0 failed scripts** |
+
+---
+
+### Code audit — security
+
+| Check | Result |
+|---|---|
+| No real API calls from browser JS | PASS — all queries target Supabase views via `.from()` only; no `fetch()` to FAA, NWS, AviationWeather, Baron, OpenWeather, Synoptic, FlightAware |
+| No service_role key in any JS file | PASS — audit_no_secrets.py confirmed |
+| No private API keys in frontend | PASS — audit_no_secrets.py confirmed |
+| git HEAD `js/config.js` has placeholder values | PASS — `REPLACE_WITH_SUPABASE_URL` / `REPLACE_WITH_SUPABASE_ANON_KEY` |
+| `.env` gitignored, local-only | PASS — not in git history |
+| No React/Next.js/Vite/TypeScript imports | PASS — plain HTML/CSS/vanilla JS |
+
+---
+
+### Code audit — source doctrine (new panels)
+
+| Panel | Check | Result |
+|---|---|---|
+| Aviation Hazards | DOCTRINE_LABEL = "Aviation Weather Truth — AviationWeather.gov" | PASS |
+| Aviation Hazards | No external API calls from browser | PASS — queries `v_aviation_hazards_latest` only |
+| Aviation Hazards | Translation attribution in `hazardEntryHtml()` | PASS — "TravelCast translation — generated from AviationWeather.gov source text." |
+| Aviation Hazards | Demo fallback via `renderDemoHazards()` | PASS |
+| ATCSCC / FAA Ops | DOCTRINE_LABEL = "Current Operational Impact — FAA NAS / ATCSCC" | PASS |
+| ATCSCC / FAA Ops | Ops plan card carries doctrine label in all 3 states (null/no_plan_found/ok) | PASS |
+| ATCSCC / FAA Ops | Section cards carry "TravelCast translation — generated from FAA ATCSCC source text." | PASS |
+| ATCSCC / FAA Ops | Demo fallback via `renderDemoFaaOps()` | PASS |
+| RouteCast | DOCTRINE_LABEL = "Forecast Weather Impact — NWS forecast proxy" | PASS |
+| RouteCast | Card footer: "NOT an official FAA delay forecast" | PASS |
+| RouteCast | Origin/dest panels carry "Current Operational Impact — FAA NAS Status" | PASS |
+| RouteCast | Demo fallback via `renderDemoRoutecast()` | PASS |
+
+---
+
+### Code audit — demo fallbacks
+
+| Module | Demo method | Status |
+|---|---|---|
+| `airportDashboard.js` | `sampleAirportStatus` | PASS |
+| `aviationWeather.js` | `renderDemoHazards()` | PASS |
+| `faaOps.js` | `renderDemoFaaOps()` | PASS |
+| `routecast.js` | `renderDemoRoutecast()` | PASS |
+| `sourceHealth.js` | source registry, `no_runs` badges | PASS |
+
+---
+
+### Code audit — Airport Status Board filter fix
+
+| Filter path | Logic | Status |
+|---|---|---|
+| "Operational: Red" | `opImpactColor(r) === "red"` — falls back from `current_impact_color` to `current_delay_type` inference | PASS |
+| "Operational: Amber" | `opImpactColor(r) === "amber"` — same fallback | PASS |
+| "No Active Event" | `current_delay_type` absent or `"None"` | PASS |
+| "Ground Delay Program" | exact match on `current_delay_type` via `type:` prefix | PASS |
+| "Ground Stop" | exact match | PASS |
+| "Airport Closure" | exact match | PASS |
+| "Departure Delay" | exact match | PASS |
+| "Arrival Delay" | exact match | PASS |
+| NWS forecast colors NOT in op filter path | `opImpactColor()` only reads `current_impact_color` and `current_delay_type` | PASS |
+
+---
+
+### Browser/operator verification items
+
+The following items require operator browser confirmation. No blocking defects were found in code inspection.
+
+| # | Item | Status |
+|---|---|---|
+| 1 | App loads from `python -m http.server 8080` | Requires operator |
+| 2 | Banner: "Supabase Connected — live views" (green border) | Requires operator |
+| 3 | Airport Status Board: 71 of 71 airports in "All Operational" | Requires operator |
+| 4 | "Operational: Red" returns red operational-impact airports | Requires operator |
+| 5 | "Operational: Amber" returns amber operational-impact airports | Requires operator |
+| 6 | "No Active Event" returns NORMAL airports only | Requires operator |
+| 7 | "Ground Delay Program" program-type filter shows GDP airports only | Requires operator |
+| 8 | "Airport Closure" program-type filter shows closure airports only | Requires operator |
+| 9 | Operational filter NOT mixing NWS forecast colors | Requires operator |
+| 10 | Aviation Hazards tab: live SIGMET/AIRMET/CWA records from Supabase | Requires operator |
+| 11 | Aviation Hazards: doctrine label visible | Requires operator |
+| 12 | Aviation Hazards: TravelCast translation attribution visible | Requires operator |
+| 13 | ATCSCC / FAA Ops: active events table renders | Requires operator |
+| 14 | ATCSCC / FAA Ops: ops plan card (advisory #159) renders correctly | Requires operator |
+| 15 | ATCSCC ops plan: section cards render with raw text + plain language | Requires operator |
+| 16 | ATCSCC ops plan: doctrine and translation attribution labels visible | Requires operator |
+| 17 | RouteCast tab: 6 configured starter routes render | Requires operator |
+| 18 | RouteCast: "NOT an official FAA delay forecast" footer present | Requires operator |
+| 19 | Source Health: all feed sources show freshness badges | Requires operator |
+| 20 | All export buttons present and functional | Requires operator |
+
+---
+
+### Non-blocking limitations (Phase 9)
+
+| Limitation | Impact | Resolution path |
+|---|---|---|
+| No active ATCSCC system-wide Operations Plan in today's NAS data | Ops plan panel shows `no_plan_found` honest state | Normal — use `--url` flag when active |
+| AIRMET endpoint returns region/time/hazard summary only | Translation says "AIRMET [type] FOR REGION [X] VALID [time]" | Future: ADDS text feed if needed |
+| RouteCast enrichment is text-matching, not route-impact analysis | Always labeled "NOT an official FAA delay forecast" | By design |
+
+---
+
+### Files modified in Phase 9
+
+| File | Change |
+|---|---|
+| `audit/day_one_readiness_report.md` | Phase 9 audit results, verdict |
+
+No code files modified — no blocking defects found requiring changes.
+
+---
+
+## Phase Completion Status
+
+- [x] Phase 1 — Bootstrap / file tree
+- [x] Phase 2 — Demo mode app (all 7 panels)
+- [x] Phase 3 — Supabase layer (bootstrap SQL + frontend connection)
+- [x] Phase 4 — Pull engine (live data ingestion scripts)
+- [x] Phase 5 — 71-airport product (airports loaded, parser fixed, dry-run 5/5)
+- [x] Phase 5b — Secondary tabs: live/demo separation, honest empty states, doctrine labels
+- [x] Phase 6 — Exporters audit / day-one hardening (all 4 exporters hardened, Graphics Queue improved, Source Health async + operator checklist)
+- [x] Phase 6 Closeout — Browser-verified, Source Health freshness fixed (SQL + JS), all 8 export paths audited
+- [x] **Phase 7 — Full Day-One Audit: PASSED → Day-One Local Prep Ready**
+- [x] **Phase 8 — Operational Intelligence Expansion: SQL migration + 4 pull scripts + 3 frontend modules built and compile-verified**
+- [x] **Phase 8 hotfix — Aviation Hazards write path: timestamp conversion + CWA field fix + deduplication; 59/59 records written to Supabase**
+- [x] **Phase 8 Cleanup Pass — Tops FL notation fix, RouteCast source_id, ATCSCC --url flag, operational filter fix, ATCSCC schema fix**
+- [x] **Phase 9 — Operational Intelligence Audit: PASSED → Operational Intelligence Audit Passed — Local Prep Usable**
