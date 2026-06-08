@@ -53,6 +53,18 @@ function uniqueRegions(records) {
     .filter(r => r && !seen.has(r) && seen.add(r));
 }
 
+// Derive operational impact color for a record.
+// Uses current_impact_color from the snapshot when present; falls back to
+// inferring from current_delay_type so filters work even when the color field
+// is null (e.g. after a pull run where FAA event matching returned NORMAL).
+function opImpactColor(r) {
+  if (r.current_impact_color) return r.current_impact_color.toLowerCase();
+  const dt = (r.current_delay_type || "").toLowerCase();
+  if (dt === "airport closure" || dt === "ground stop") return "red";
+  if (dt === "ground delay program" || dt === "arrival delay" || dt === "departure delay") return "amber";
+  return "green";
+}
+
 function filterRecords(records, { region, search, opImpact, fcstImpact }) {
   return records.filter(r => {
     if (region && r.region !== region) return false;
@@ -67,10 +79,16 @@ function filterRecords(records, { region, search, opImpact, fcstImpact }) {
       if (!hit) return false;
     }
     if (opImpact) {
-      if (opImpact === "None") {
+      if (opImpact === "None" || opImpact === "Green") {
+        // No active operational event — current_delay_type must be absent or 'None'
         if (r.current_delay_type && r.current_delay_type !== "None") return false;
+      } else if (opImpact.startsWith("type:")) {
+        // Program-type exact match
+        const matchType = opImpact.slice(5);
+        if ((r.current_delay_type || "") !== matchType) return false;
       } else {
-        if ((r.current_impact_color || "").toLowerCase() !== opImpact.toLowerCase()) return false;
+        // Color filter (Red / Amber) — use opImpactColor for robustness
+        if (opImpactColor(r) !== opImpact.toLowerCase()) return false;
       }
     }
     if (fcstImpact) {
@@ -129,8 +147,12 @@ function filterBarHtml(records) {
         <option value="">All Operational</option>
         <option value="Red">Operational: Red</option>
         <option value="Amber">Operational: Amber</option>
-        <option value="Green">Operational: Green</option>
         <option value="None">No Active Event</option>
+        <option value="type:Ground Delay Program">Ground Delay Program</option>
+        <option value="type:Ground Stop">Ground Stop</option>
+        <option value="type:Airport Closure">Airport Closure</option>
+        <option value="type:Departure Delay">Departure Delay</option>
+        <option value="type:Arrival Delay">Arrival Delay</option>
       </select>
       <select id="apt-fcst-filter">
         <option value="">All Forecast</option>

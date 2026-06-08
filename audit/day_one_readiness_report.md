@@ -797,3 +797,78 @@ python scripts/pull/pull_atcscc_ops_plan.py --url "https://www.fly.faa.gov/adv/a
 | `scripts/pull/rebuild_routecast_snapshots.py` | `SOURCE_ID = 'routecast'` |
 | `scripts/pull/pull_atcscc_ops_plan.py` | `--url` argparse flag; manual URL injection block in `main()` |
 | `audit/day_one_readiness_report.md` | This section |
+
+---
+
+## Phase 8 Cleanup Pass — Operational Filter Fix (2026-06-08)
+
+### Defect
+
+Selecting "Operational: Red" on the Airport Status Board returned 0 of 71 airports even when active GDP, Ground Stop, and Airport Closure events existed with red operational impact.
+
+Selecting "No Active Event" returned the correct 63 of 71 airports, confirming the filter UI worked but the color-matching path was broken.
+
+### Root cause
+
+Two compounding problems:
+
+**1. Filter used `current_impact_color` directly with no fallback.**
+
+```javascript
+// Old (broken when current_impact_color is null):
+if ((r.current_impact_color || "").toLowerCase() !== opImpact.toLowerCase()) return false;
+```
+
+`current_impact_color` is null for NORMAL airports by design, and can also be null when a pull run fails to match FAA events (API unavailability, field-name change, etc.). In those cases, Red and Amber filters returned 0 even though visual badges correctly showed "Ground Delay Program" or "Airport Closure" in red — because `impactClass()` also matches the word "ground" and "closure" in badge text.
+
+**2. No program-type filter options existed.**
+
+Users could not filter to "show me only Ground Delay Program airports" or "show me only Airport Closures."
+
+### Fix
+
+**`js/modules/airportDashboard.js`:**
+
+Added `opImpactColor(r)` helper that uses `current_impact_color` when present and falls back to inferring from `current_delay_type`:
+
+| `current_delay_type` | Inferred color |
+|---|---|
+| Airport Closure | Red |
+| Ground Stop | Red |
+| Ground Delay Program | Amber |
+| Arrival Delay | Amber |
+| Departure Delay | Amber |
+| None / absent | Green |
+
+Updated `filterRecords()` to use `opImpactColor(r)` for Red/Amber filter paths.
+
+Made "No Active Event" also handle `opImpact === "Green"` (same semantics — no active event).
+
+Added `type:` prefix filter path for program-type exact matching.
+
+Updated filter dropdown with program-type options: Ground Delay Program, Ground Stop, Airport Closure, Departure Delay, Arrival Delay.
+
+Removed redundant "Operational: Green" option (Green operationally means no active event — same as "No Active Event").
+
+### Source doctrine preserved
+
+- Red/Amber color labels still come from FAA NAS operational data only
+- "No Active Event" still means no FAA/NAS active program
+- No NWS forecast color mixed into operational filter path
+
+### Phase 9 audit checklist additions
+
+- [ ] Verify "All Operational" shows 71 of 71 airports
+- [ ] Verify "Operational: Red" shows red operational-impact airports when active events exist (EWR/JFK/LAS/LGA/SFO type GDPs)
+- [ ] Verify "Operational: Amber" shows amber operational-impact airports when active events exist (SAN-type GDPs, arrival/departure delays)
+- [ ] Verify "No Active Event" shows NORMAL airports only (63 of 71 when 8 active programs present)
+- [ ] Verify "Ground Delay Program" program-type filter isolates only GDP airports
+- [ ] Verify "Airport Closure" program-type filter isolates only closure airports
+- [ ] Verify operational filter does NOT mix NWS forecast colors into results
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `js/modules/airportDashboard.js` | `opImpactColor()` helper; updated `filterRecords()`; program-type options in dropdown |
+| `audit/day_one_readiness_report.md` | This section + Phase 9 audit checklist |
