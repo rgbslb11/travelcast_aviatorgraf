@@ -26,7 +26,7 @@ from lib_pull import (
     load_raw, save_raw, supabase_get, log, utc_now,
 )
 
-SOURCE_ID = 'faa_nas_status'  # reuses existing feed system
+SOURCE_ID = 'routecast'
 
 
 # ─────────────────────────────── Supabase loaders ────────────────────

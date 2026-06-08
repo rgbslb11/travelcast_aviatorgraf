@@ -22,6 +22,7 @@ Label:    "Current Operational Impact — FAA NAS / ATCSCC"
 
 Usage:
   python pull_atcscc_ops_plan.py [--dry-run] [--limit N]
+  python pull_atcscc_ops_plan.py --url "https://www.fly.faa.gov/adv/adv_otherdis.jsp?..."
 """
 from __future__ import annotations
 
@@ -481,6 +482,17 @@ def main() -> None:
         '--limit', type=int, default=None,
         help='Limit number of advisory HTML pages to fetch',
     )
+    parser.add_argument(
+        '--url',
+        type=str,
+        default=None,
+        help=(
+            'Manually supply an ATCSCC advisory URL to fetch and ingest as an '
+            'operations plan. Bypasses the _is_ops_plan_url filter. '
+            'Auto-discovery still runs; the manual URL is added to the front of '
+            'the ops-plan list so it is processed first.'
+        ),
+    )
     args = parser.parse_args()
 
     load_env()
@@ -539,6 +551,19 @@ def main() -> None:
         'ops_plan_urls': len(ops_plan_urls),
         'ops_plan_url_list': ops_plan_urls,
     })
+
+    # ── Manual URL injection (--url flag) ─────────────────────────────────
+    if args.url:
+        manual = args.url.strip()
+        log('manual_url_provided', {'url': manual})
+        if manual not in ops_plan_urls:
+            ops_plan_urls.insert(0, manual)
+            log('manual_url_added', {
+                'url': manual,
+                'total_ops_plan_urls': len(ops_plan_urls),
+            })
+        else:
+            log('manual_url_already_discovered', {'url': manual})
 
     # ── Phase 2–5: Fetch, extract, parse, translate each ops-plan URL ────
 

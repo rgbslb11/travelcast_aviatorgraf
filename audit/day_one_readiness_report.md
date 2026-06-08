@@ -719,3 +719,81 @@ Handles:
 - [x] `audit_no_secrets.py`: PASSED
 - [x] `audit_source_doctrine.py`: PASSED
 - [x] `audit_file_tree.py`: PASSED
+
+---
+
+## Phase 8 Cleanup Pass (2026-06-08)
+
+### Objective
+
+Three polish fixes and one new capability after Phase 8 hotfix was confirmed live.
+
+### Fix 1 — Aviation Hazards translation: "Tops TO" / "Tops ABV" → "Tops to FLxxx" / "Tops above FLxxx"
+
+**File:** `scripts/pull/pull_aviation_hazards.py`
+
+**Root cause:** `_extract_token_after(raw_text, 'TOPS')` returned the literal word "TO" or "ABV" as the altitude value when parsing SIGMET raw text. Result: translation showed "Tops TO" or "Tops ABV" with no altitude.
+
+**Fix:** Replaced the broken tops extraction block with `_extract_tops_fl()` helper:
+- Checks raw_text for `TOPS ABV` / `TOPS ABOVE` pattern to set qualifier (default: `to`)
+- Prefers `altitude_top_ft` field (from SIGMET `altitudeHi1`) — converts to FL notation: `round(ft / 100)` → `FL{n:03d}`
+- Falls back to regex `TOPS (TO|ABV|ABOVE)? (FL\d{2,3}|\d{3,5})` on raw text
+- Result: "Tops to FL350" or "Tops above FL450"
+
+**Translation constraint:** Only extracts altitude from source fields. Never invents altitude values.
+
+### Fix 2 — RouteCast feed_run source_system_id
+
+**File:** `scripts/pull/rebuild_routecast_snapshots.py`
+
+**Root cause:** `SOURCE_ID = 'faa_nas_status'` — RouteCast activity was being logged under the FAA NAS source in Source Health, and errors/activity would show mixed with FAA NAS status updates.
+
+**Fix:** `SOURCE_ID = 'routecast'`
+
+**Result:** Source Health will show RouteCast as a separate source row. If `source_systems` table has a `routecast` row, feed_runs will correctly attribute to it.
+
+### Fix 3 — ATCSCC manual URL ingestion (`--url` flag)
+
+**File:** `scripts/pull/pull_atcscc_ops_plan.py`
+
+**New capability:** Operator can supply an ATCSCC Operations Plan URL directly when it cannot be auto-discovered:
+
+```
+python scripts/pull/pull_atcscc_ops_plan.py --url "https://www.fly.faa.gov/adv/adv_otherdis.jsp?..."
+```
+
+**Implementation:**
+- `--url` argparse argument added
+- After auto-discovery builds `ops_plan_urls`, if `args.url` is set: logs `manual_url_provided`, inserts at front of `ops_plan_urls` if not already present
+- URL bypasses `_is_ops_plan_url()` filter (operator is explicitly providing it)
+- Existing `no_plan_found` honest state remains for runs without `--url` when no ops-plan URL is auto-discovered
+
+**Behavior states:**
+
+| Situation | Behavior |
+|---|---|
+| No `--url`, no auto-discovered ops-plan URL | `no_plan_found` logged; honest empty state in UI |
+| No `--url`, ops-plan URL auto-discovered | URL fetched, parsed, upserted |
+| `--url` provided, URL not in auto-discovery | URL inserted at front; fetched, parsed, upserted |
+| `--url` provided, URL already discovered | `manual_url_already_discovered` logged; no duplicate |
+
+### Verification results (2026-06-08, cleanup pass)
+
+| Check | Result |
+|---|---|
+| `py_compile pull_atcscc_ops_plan.py` | PASSED |
+| `py_compile pull_aviation_hazards.py` | PASSED |
+| `py_compile rebuild_routecast_snapshots.py` | PASSED |
+| `pull_atcscc_ops_plan.py --dry-run` | PASSED — 6 advisory URLs found; 0 ops-plan; NOTAM advisories 4; `no_plan_found` logged correctly |
+| `rebuild_routecast_snapshots.py --dry-run` | PASSED — 6 routes; `source_system_id: routecast`; 3 routes with hazard mentions |
+| `audit_source_doctrine.py` | PASSED |
+| `audit_file_tree.py` | PASSED |
+
+### Files modified
+
+| File | Change |
+|---|---|
+| `scripts/pull/pull_aviation_hazards.py` | `_extract_tops_fl()` helper; `translate_hazard()` uses qualifier+FL format |
+| `scripts/pull/rebuild_routecast_snapshots.py` | `SOURCE_ID = 'routecast'` |
+| `scripts/pull/pull_atcscc_ops_plan.py` | `--url` argparse flag; manual URL injection block in `main()` |
+| `audit/day_one_readiness_report.md` | This section |

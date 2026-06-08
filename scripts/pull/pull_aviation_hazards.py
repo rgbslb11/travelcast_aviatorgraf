@@ -315,6 +315,48 @@ def _extract_token_after(text: str, keyword: str) -> str:
     return token.strip(' .,;') if token else ''
 
 
+def _extract_tops_fl(raw_text: str, altitude_top_ft: object) -> tuple[str, str]:
+    """Return (qualifier, fl_string) for the tops altitude, or ('', '').
+
+    qualifier: 'to' or 'above' (derived from raw text when present)
+    fl_string: 'FLxxx' formatted string, or ''
+
+    Priority order:
+    1. Structured altitude_top_ft field (already parsed from source by parser)
+    2. Raw text pattern: TOPS [TO|ABV|ABOVE] FLxxx or TOPS FLxxx
+    Never invents values — returns ('', '') when nothing is available.
+    """
+    qualifier = 'above' if re.search(
+        r'\bTOPS\s+(?:ABV|ABOVE)\b', raw_text, re.IGNORECASE
+    ) else 'to'
+
+    # Prefer the structured altitude field
+    if altitude_top_ft is not None:
+        try:
+            fl = round(int(altitude_top_ft) / 100)
+            return qualifier, f'FL{fl:03d}'
+        except (TypeError, ValueError):
+            pass
+
+    # Fall back to raw text: TOPS [TO|ABV] FL350 or TOPS 35000
+    m = re.search(
+        r'\bTOPS\s+(?:(?:TO|ABV|ABOVE)\s+)?(FL(\d{2,3})|\b(\d{3,5})\b)',
+        raw_text,
+        re.IGNORECASE,
+    )
+    if m:
+        val = m.group(1)
+        if val.upper().startswith('FL'):
+            return qualifier, val.upper()
+        try:
+            fl = round(int(val) / 100)
+            return qualifier, f'FL{fl:03d}'
+        except ValueError:
+            pass
+
+    return '', ''
+
+
 def _fmt_ends(ends_at: object) -> str:
     """Format ends_at_utc for display. Returns HHMMz string or 'unknown'."""
     if not ends_at:
@@ -362,14 +404,9 @@ def translate_hazard(h: dict) -> str:
     # Collect optional detail tokens from raw text.
     detail_parts: list[str] = []
 
-    tops = _extract_token_after(raw_text, 'TOPS')
-    if not tops:
-        # Look for FL followed by digits e.g. FL350
-        m = re.search(r'\bFL(\d{2,3})\b', raw_text)
-        if m:
-            tops = f'FL{m.group(1)}'
-    if tops:
-        detail_parts.append(f'Tops {tops}')
+    tops_qual, tops_fl = _extract_tops_fl(raw_text, h.get('altitude_top_ft'))
+    if tops_fl:
+        detail_parts.append(f'Tops {tops_qual} {tops_fl}')
 
     hail = _extract_token_after(raw_text, 'HAIL TO')
     if hail:
