@@ -1229,3 +1229,53 @@ Enrichment and commercial sources (tier 2/3) do NOT trigger this alert — only 
 - [x] **Phase 8 Cleanup Pass — Tops FL notation fix, RouteCast source_id, ATCSCC --url flag, operational filter fix, ATCSCC schema fix**
 - [x] **Phase 9 — Operational Intelligence Audit: PASSED → Operational Intelligence Audit Passed — Local Prep Usable**
 - [x] **Phase 10 — Hardening and Runbook: COMPLETE → Product Ready for Repeatable Local Operations**
+- [x] **Phase 10 Hotfix — ATCSCC dual feed_run: `atcscc_advisories` and `atcscc_ops_plan` now written separately**
+
+---
+
+## Phase 10 Hotfix — ATCSCC Dual Feed Run (2026-06-08)
+
+### Defect
+
+Source Health showed `atcscc_advisories` as `stale` (or `no_runs`) after running `pull_atcscc_ops_plan.py`. The NAS XML / NOTAM advisory fetch was succeeding and writing its cache, but no `feed_runs` row was being recorded for `source_system_id = 'atcscc_advisories'`.
+
+The script only wrote one `feed_runs` row — for `atcscc_ops_plan` — even though it also ran the `atcscc_advisories` (NAS XML / NOTAM) fetch path.
+
+Additionally, `atcscc_ops_plan` was being marked as failed (with an error message) when no system-wide Operations Plan was active — `no_plan_found` is a normal state, not an error.
+
+### Fix — `scripts/pull/pull_atcscc_ops_plan.py`
+
+**Two separate `write_feed_run` calls** now appear at the end of `main()`:
+
+| Source ID | Tracks | Success criteria |
+|---|---|---|
+| `atcscc_advisories` | NAS XML fetch + NOTAM advisory cache write | `nas_fetch_error is None` and XML source was reached |
+| `atcscc_ops_plan` | Operations Plan advisory ingestion | `fetch_errors == 0` (no_plan_found is NOT an error) |
+
+**`no_plan_found` fix:** The `atcscc_ops_plan` feed_run now uses `success = fetch_errors == 0`. Not finding an active system-wide ops plan is a normal state and no longer causes `error` to be set.
+
+**Visibility:** Two new log events (`advisories_feed_run_submitted`, `ops_plan_feed_run_submitted`) appear after each write, so operators can confirm both rows were submitted.
+
+### Docstring updated
+
+`pull_atcscc_ops_plan.py` header now lists both `feed_runs` writes explicitly.
+
+### Live run results (2026-06-08, post-fix)
+
+```
+advisories_feed_run_submitted   source_system_id=atcscc_advisories  success=true  records=4  dry_run=false
+ops_plan_feed_run_submitted     source_system_id=atcscc_ops_plan    success=true  records=0  dry_run=false
+```
+
+No errors. Source Health will now show `atcscc_advisories` as `fresh` after a successful `pull_atcscc_ops_plan.py` run.
+
+### Audit results (post-fix)
+
+| Check | Result |
+|---|---|
+| `py_compile scripts/pull/pull_atcscc_ops_plan.py` | PASSED |
+| `pull_atcscc_ops_plan.py --dry-run` | PASSED — 2 `feed_run_dry_run` events (atcscc_advisories, atcscc_ops_plan) |
+| `pull_atcscc_ops_plan.py` (live) | PASSED — both rows written to Supabase |
+| `audit_no_secrets.py` | PASSED |
+| `audit_source_doctrine.py` | PASSED |
+| `audit_file_tree.py` | PASSED |

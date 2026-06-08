@@ -15,7 +15,8 @@ Writes:
   data/raw/atcscc_raw.xml             — raw NAS status XML (existing behaviour)
   atcscc_operations_plans             — Supabase (one row per ops-plan advisory)
   atcscc_operations_plan_sections     — Supabase (one row per section per plan)
-  feed_runs (source_system_id='atcscc_ops_plan')
+  feed_runs (source_system_id='atcscc_advisories') — NAS XML / NOTAM advisory fetch
+  feed_runs (source_system_id='atcscc_ops_plan')   — Operations Plan advisory ingestion
 
 Doctrine: ATCSCC / FAA NAS = Current Operational Impact (operational truth)
 Label:    "Current Operational Impact — FAA NAS / ATCSCC"
@@ -801,7 +802,25 @@ def main() -> None:
         for adv in notam_advisories[:10]:
             log('advisory_dry_run', adv)
 
-    # ── Final summary + feed_run ──────────────────────────────────────────
+    # ── Feed run: atcscc_advisories (NAS XML / NOTAM advisory cache) ──────
+    # Success = XML was fetched without error from at least one source.
+    # no_plan_found for ops plans does not affect this source's success.
+    advisories_fetch_ok = nas_fetch_error is None and bool(source_used_nas)
+    write_feed_run(
+        sb_url, sb_key, 'atcscc_advisories',
+        success=advisories_fetch_ok,
+        records=len(notam_advisories),
+        error=nas_fetch_error if not advisories_fetch_ok else None,
+        dry_run=args.dry_run,
+    )
+    log('advisories_feed_run_submitted', {
+        'source_system_id': 'atcscc_advisories',
+        'success': advisories_fetch_ok,
+        'records': len(notam_advisories),
+        'dry_run': args.dry_run,
+    })
+
+    # ── Final summary ─────────────────────────────────────────────────────
 
     log('pull_summary', {
         'plans_found': len(all_plan_raw),
@@ -812,25 +831,23 @@ def main() -> None:
         'dry_run': args.dry_run,
     })
 
-    overall_success = fetch_errors == 0 and (
-        plans_attempted > 0 or len(notam_advisories) > 0
-    )
-    parse_status = (
-        'no_plan_found' if not ops_plan_urls
-        else ('partial' if fetch_errors > 0 else 'ok')
-    )
-
+    # ── Feed run: atcscc_ops_plan (Operations Plan advisory ingestion) ────
+    # no_plan_found is a normal state — not a failure.
+    # Only fetch_errors (HTML page failures) count as an error here.
+    ops_plan_success = fetch_errors == 0
     write_feed_run(
         sb_url, sb_key, SOURCE_ID,
-        success=overall_success,
-        records=len(all_plan_raw) + len(notam_advisories),
-        error=(
-            f'fetch_errors={fetch_errors}, parse_status={parse_status}'
-            if (fetch_errors or parse_status != 'ok')
-            else None
-        ),
+        success=ops_plan_success,
+        records=len(all_plan_raw),
+        error=f'fetch_errors={fetch_errors}' if fetch_errors > 0 else None,
         dry_run=args.dry_run,
     )
+    log('ops_plan_feed_run_submitted', {
+        'source_system_id': SOURCE_ID,
+        'success': ops_plan_success,
+        'records': len(all_plan_raw),
+        'dry_run': args.dry_run,
+    })
 
 
 if __name__ == '__main__':
