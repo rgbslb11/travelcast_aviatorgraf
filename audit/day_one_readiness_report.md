@@ -645,3 +645,77 @@ After sql/06 is applied, the RouteCast tab will show 6 configured starter routes
 - [x] Phase 6 Closeout — Browser-verified, Source Health freshness fixed (SQL + JS), all 8 export paths audited
 - [x] **Phase 7 — Full Day-One Audit: PASSED → Day-One Local Prep Ready**
 - [x] **Phase 8 — Operational Intelligence Expansion: SQL migration + 4 pull scripts + 3 frontend modules built and compile-verified**
+- [x] **Phase 8 hotfix — Aviation Hazards write path: timestamp conversion + CWA field fix + deduplication; 59/59 records written to Supabase**
+
+---
+
+## Phase 8 Hotfix — Aviation Hazards Write Path (2026-06-08)
+
+### Blocking error
+
+```
+HTTP 400: date/time field value out of range: "1780876500"
+```
+
+AviationWeather.gov `validTimeFrom`/`validTimeTo` fields are Unix epoch integers. Supabase `timestamptz` columns reject integers — require ISO-8601 strings.
+
+### Root cause inventory
+
+| Field | Source | Raw value type | Column type | Fix |
+|---|---|---|---|---|
+| `begins_at_utc` (SIGMET) | `validTimeFrom` | int epoch | timestamptz | `iso_utc_from_epoch()` |
+| `ends_at_utc` (SIGMET) | `validTimeTo` | int epoch | timestamptz | `iso_utc_from_epoch()` |
+| `issued_at_utc` (SIGMET) | `creationTime` | ISO string | timestamptz | `iso_utc_from_epoch()` (passthrough) |
+| `begins_at_utc` (AIRMET) | `validTimeFrom` | int epoch | timestamptz | `iso_utc_from_epoch()` |
+| `ends_at_utc` (AIRMET) | `validTimeTo` | int epoch | timestamptz | `iso_utc_from_epoch()` |
+| `issued_at_utc` (AIRMET) | `receiptTime` | `"2026-06-07 20:01:16"` (no T, no Z) | timestamptz | `iso_utc_from_epoch()` |
+| `begins_at_utc` (CWA) | `validTimeFrom` | int epoch | timestamptz | `iso_utc_from_epoch()` |
+| `ends_at_utc` (CWA) | `validTimeTo` | int epoch | timestamptz | `iso_utc_from_epoch()` |
+
+### Additional CWA parser bugs (found during fix)
+
+CWA response fields are different from SIGMET. The original parser used wrong field names:
+
+| Field | Old (broken) | New (correct) |
+|---|---|---|
+| hazard_id | `cwaId` / `cwaid` (not present) | `f"{cwsu}-{seriesId}"` e.g. `ZLC-203` |
+| raw_text | `rawCwa` / `rawAirSigmet` (not present) | `rawText` |
+| altitude_top_ft | `altitudeHigh1` (not present) | `top` |
+| altitude_bottom_ft | `altitudeLow1` (not present) | `base` |
+
+### Duplicate hazard_id fix
+
+AIRMET endpoint returns multiple altitude-layer records with the same region+hazard+validTimeFrom. Added `seen_ids` deduplication step after enrichment — keeps first occurrence, logs skipped duplicates.
+
+Result: 61 raw → 59 unique hazard_ids → 59 written.
+
+### New helper: `iso_utc_from_epoch(value)`
+
+Handles:
+- `None` → `None`
+- `int`/`float` epoch seconds → `"2026-06-08T01:55:00Z"`
+- Epoch milliseconds (≥ 1e11) → converted to seconds first
+- ISO string with T → normalized to Z suffix
+- `"YYYY-MM-DD HH:MM:SS"` string → `"YYYY-MM-DDThh:mm:ssZ"`
+- Unparseable → `None`
+
+### Live run results (2026-06-08, post-fix)
+
+| Metric | Value |
+|---|---|
+| SIGMETs fetched/parsed | 20 / 20 |
+| AIRMETs fetched/parsed | 38 / 38 |
+| CWAs fetched/parsed | 3 / 3 |
+| Parse errors | 0 |
+| Deduped (AIRMET altitude layers) | 2 |
+| total_written | 59 |
+| HTTP 400 errors | 0 |
+| `aviation_hazard_products` count (Supabase) | 59 |
+| `v_aviation_hazards_latest` active rows | 20+ |
+
+### Audit results (2026-06-08, post-hotfix)
+
+- [x] `py_compile scripts/pull/*.py scripts/load/*.py`: PASSED
+- [x] `audit_no_secrets.py`: PASSED
+- [x] `audit_source_doctrine.py`: PASSED
+- [x] `audit_file_tree.py`: PASSED

@@ -17,7 +17,8 @@ Usage:
   python pull_aviation_hazards.py [--dry-run] [--limit N]
 """
 from __future__ import annotations
-import argparse, json, re, sys, urllib.error, urllib.request
+import argparse, datetime, json, re, sys, urllib.error, urllib.request
+from datetime import timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent))
@@ -93,6 +94,60 @@ def _icao_to_iata(icao: str) -> str:
     return icao
 
 
+# ─────────────────────────────── timestamp helpers ───────────────────
+
+def iso_utc_from_epoch(value: object) -> str | None:
+    """Convert any timestamp value to an ISO-8601 UTC string for Supabase.
+
+    Handles:
+    - None → None
+    - int/float epoch seconds (< 1e11) → "2026-06-08T01:55:00Z"
+    - int/float epoch milliseconds (>= 1e11) → converted to seconds first
+    - ISO string with T → normalized to Z suffix ("2026-06-08T01:55:00Z")
+    - "YYYY-MM-DD HH:MM:SS" string → "2026-06-08T01:55:00Z"
+    - Unparseable → None (warning logged via return None)
+    """
+    if value is None:
+        return None
+    # Numeric epoch
+    if isinstance(value, (int, float)):
+        try:
+            epoch_s = float(value)
+            if epoch_s >= 1e11:  # milliseconds — divide down
+                epoch_s /= 1000.0
+            dt = datetime.datetime.fromtimestamp(epoch_s, tz=timezone.utc)
+            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        except (OSError, OverflowError, ValueError):
+            return None
+    # String handling
+    s = str(value).strip()
+    if not s:
+        return None
+    # Already ISO with T separator
+    if 'T' in s:
+        # Normalize +00:00 and .000Z variants → plain Z
+        s = s.replace('+00:00', 'Z').replace('+0000', 'Z')
+        if s.endswith('.000Z'):
+            s = s[:-5] + 'Z'
+        elif '.' in s and s.endswith('Z'):
+            s = s[:s.index('.')] + 'Z'
+        if not s.endswith('Z'):
+            s += 'Z'
+        return s
+    # "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DD HH:MM:SS.ffffff"
+    if ' ' in s and len(s) >= 19:
+        try:
+            s_clean = s[:19]  # drop microseconds
+            dt = datetime.datetime.strptime(s_clean, '%Y-%m-%d %H:%M:%S')
+            return dt.strftime('%Y-%m-%dT%H:%M:%SZ')
+        except ValueError:
+            pass
+    # Plain date "YYYY-MM-DD"
+    if len(s) == 10 and s[4] == '-':
+        return s + 'T00:00:00Z'
+    return None
+
+
 # ─────────────────────────────── parsing ─────────────────────────────
 
 def parse_sigmet(raw: dict) -> dict | None:
@@ -117,9 +172,9 @@ def parse_sigmet(raw: dict) -> dict | None:
             'hazard_type':            'SIGMET',
             'subtype':                raw.get('hazard', ''),
             'raw_text':               raw_text,
-            'begins_at_utc':          raw.get('validTimeFrom'),
-            'ends_at_utc':            raw.get('validTimeTo'),
-            'issued_at_utc':          raw.get('creationTime'),
+            'begins_at_utc':          iso_utc_from_epoch(raw.get('validTimeFrom')),
+            'ends_at_utc':            iso_utc_from_epoch(raw.get('validTimeTo')),
+            'issued_at_utc':          iso_utc_from_epoch(raw.get('creationTime')),
             'altitude_top_ft':        raw.get('altitudeHi1'),
             'altitude_bottom_ft':     raw.get('altitudeLow1'),
             'movement_from_degrees':  raw.get('movementDir'),
@@ -143,17 +198,21 @@ def parse_airmet(raw: dict) -> dict | None:
     try:
         region    = raw.get('region', '')
         hazard    = (raw.get('hazard') or '').replace('-', '_').upper()
-        valid_from = raw.get('validTimeFrom', '')
+        valid_from_raw = raw.get('validTimeFrom', '')
         # Synthetic id: region+hazard+validtime is unique per product window
-        hazard_id = f'AIRMET-{region}-{hazard}-{valid_from}' if region or hazard else ''
+        hazard_id = f'AIRMET-{region}-{hazard}-{valid_from_raw}' if region or hazard else ''
         if not hazard_id:
             return None
 
-        # Build synthetic raw text since the endpoint provides no raw product text
+        begins_iso = iso_utc_from_epoch(raw.get('validTimeFrom'))
+        ends_iso   = iso_utc_from_epoch(raw.get('validTimeTo'))
+        issued_iso = iso_utc_from_epoch(raw.get('receiptTime'))
+
+        # Build synthetic raw text with readable ISO times
         raw_text = (
             f"AIRMET {hazard} FOR REGION {region}"
-            f" VALID {raw.get('validTimeFrom','')} TO {raw.get('validTimeTo','')}."
-            f" Receipt time: {raw.get('receiptTime', '')}."
+            f" VALID {begins_iso or valid_from_raw} TO {ends_iso or raw.get('validTimeTo','')}."
+            f" Receipt time: {issued_iso or raw.get('receiptTime', '')}."
         )
 
         return {
@@ -161,9 +220,9 @@ def parse_airmet(raw: dict) -> dict | None:
             'hazard_type':            'AIRMET',
             'subtype':                hazard,
             'raw_text':               raw_text,
-            'begins_at_utc':          raw.get('validTimeFrom'),
-            'ends_at_utc':            raw.get('validTimeTo'),
-            'issued_at_utc':          raw.get('receiptTime'),
+            'begins_at_utc':          begins_iso,
+            'ends_at_utc':            ends_iso,
+            'issued_at_utc':          issued_iso,
             'altitude_top_ft':        None,
             'altitude_bottom_ft':     None,
             'movement_from_degrees':  None,
@@ -181,25 +240,32 @@ def parse_airmet(raw: dict) -> dict | None:
 def parse_cwa(raw: dict) -> dict | None:
     """Parse a Center Weather Advisory record from the AviationWeather.gov API.
 
-    Returns None on any exception.
+    CWA response fields: cwsu, name, receiptTime, validTimeFrom, validTimeTo,
+    seriesId, hazard, qualifier, base, top, geom, coords, rawText.
+    Returns None on any exception or if no usable identifier exists.
     """
     try:
-        hazard_id = raw.get('cwaId') or raw.get('cwaid', '')
-        raw_text  = raw.get('rawCwa') or raw.get('rawAirSigmet', '')
+        cwsu      = raw.get('cwsu', '')
+        series_id = raw.get('seriesId', '')
+        hazard_id = f'{cwsu}-{series_id}' if cwsu or series_id else ''
+        raw_text  = raw.get('rawText', '') or raw.get('rawCwa', '')
+
+        coords = raw.get('coords')
+        geometry_geojson = {'type': 'polygon', 'coords': coords} if coords else None
 
         return {
-            'hazard_id':              str(hazard_id),
+            'hazard_id':              hazard_id,
             'hazard_type':            'CWA',
             'subtype':                raw.get('hazard', ''),
             'raw_text':               raw_text,
-            'begins_at_utc':          raw.get('validTimeFrom'),
-            'ends_at_utc':            raw.get('validTimeTo'),
-            'issued_at_utc':          None,
-            'altitude_top_ft':        raw.get('altitudeHigh1'),
-            'altitude_bottom_ft':     raw.get('altitudeLow1'),
-            'movement_from_degrees':  raw.get('movementDir'),
-            'movement_speed_kt':      raw.get('movementSpd'),
-            'geometry_geojson':       None,
+            'begins_at_utc':          iso_utc_from_epoch(raw.get('validTimeFrom')),
+            'ends_at_utc':            iso_utc_from_epoch(raw.get('validTimeTo')),
+            'issued_at_utc':          iso_utc_from_epoch(raw.get('receiptTime')),
+            'altitude_top_ft':        raw.get('top'),
+            'altitude_bottom_ft':     raw.get('base'),
+            'movement_from_degrees':  None,
+            'movement_speed_kt':      None,
+            'geometry_geojson':       geometry_geojson,
             'source_system_id':       SOURCE_ID,
             'fetched_at_utc':         utc_now(),
             'parse_status':           'ok',
@@ -253,11 +319,13 @@ def _fmt_ends(ends_at: object) -> str:
     """Format ends_at_utc for display. Returns HHMMz string or 'unknown'."""
     if not ends_at:
         return 'unknown'
-    # Unix epoch integer or float
+    # Unix epoch integer or float (fallback — normally already converted to ISO)
     if isinstance(ends_at, (int, float)):
         try:
-            import datetime
-            dt = datetime.datetime.utcfromtimestamp(ends_at)
+            epoch_s = float(ends_at)
+            if epoch_s >= 1e11:
+                epoch_s /= 1000.0
+            dt = datetime.datetime.fromtimestamp(epoch_s, tz=timezone.utc)
             return dt.strftime('%H%Mz')
         except (OSError, OverflowError, ValueError):
             return str(ends_at)
@@ -541,6 +609,23 @@ def main() -> None:
                 ' TravelCast translation — generated from AviationWeather.gov source text.'
             )
             log('translate_error', {'hazard_id': rec.get('hazard_id'), 'error': str(e)})
+
+    # Deduplicate by hazard_id — keep first occurrence.
+    # Within-batch duplicate hazard_ids cause PostgreSQL ON CONFLICT to error.
+    # AIRMET synthetic IDs (region+hazard+validTimeFrom) can collide when the same
+    # product has multiple altitude layers; we keep one record per unique ID.
+    seen_ids: set[str] = set()
+    deduped: list[dict] = []
+    for rec in parsed:
+        hid = rec.get('hazard_id') or ''
+        if hid not in seen_ids:
+            seen_ids.add(hid)
+            deduped.append(rec)
+        else:
+            log('hazard_id_deduped', {'hazard_id': hid, 'action': 'skipped_duplicate'})
+    if len(deduped) < len(parsed):
+        log('dedup_complete', {'original': len(parsed), 'after_dedup': len(deduped)})
+    parsed = deduped
 
     # Save combined parsed output.
     save_raw('aviation_hazards_parsed', parsed)
