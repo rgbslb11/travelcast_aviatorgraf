@@ -8,3 +8,4 @@ __pycache__/
 .vscode/settings.json
 data/raw/*.json
 data/raw/*.xml
+data/exports/

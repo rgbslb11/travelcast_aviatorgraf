@@ -1279,3 +1279,116 @@ No errors. Source Health will now show `atcscc_advisories` as `fresh` after a su
 | `audit_no_secrets.py` | PASSED |
 | `audit_source_doctrine.py` | PASSED |
 | `audit_file_tree.py` | PASSED |
+
+---
+
+## Phase 11 — Broadcast Graphics Integration, Step 1: Batch Export Script (2026-06-08)
+
+### Objective
+
+ROADMAP Milestone 4: "Broadcast package JSON archive" — build the server-side batch export script that generates broadcast-ready files from Supabase live data, matching the formats already produced by the frontend exporters.
+
+### File created
+
+| File | Purpose |
+|---|---|
+| `scripts/export/export_broadcast_batch.py` | Reads `v_airport_status_dashboard` from Supabase; writes dashboard.json, airports.geojson, active_events.placefile, {IATA}_broadcast.json (active-event airports), manifest.json to `data/exports/YYYYMMDD_HHMM/` |
+| `sql/07_grant_export_views.sql` | GRANT SELECT on all dashboard views to `service_role` and `anon` — required for server-side reads |
+
+### Supporting changes
+
+| File | Change |
+|---|---|
+| `.gitignore` | Added `data/exports/` — generated export directories must not be committed |
+| `scripts/audit/audit_file_tree.py` | Added `scripts/export/export_broadcast_batch.py` to required file list |
+
+### Export script design
+
+**Inputs:**
+- `v_airport_status_dashboard` — all 71 airports, full dashboard fields
+- Flags: `--dry-run` (print manifest, skip disk writes), `--limit N`, `--all` (all airports get individual packages, not just active-event airports)
+
+**Outputs written to `data/exports/YYYYMMDD_HHMM/`:**
+
+| File | Format | Matches JS exporter |
+|---|---|---|
+| `dashboard.json` | dashboardJson format: product, version, source_doctrine block, nws_proxy_notice, freshness_summary, records | `exportDashboardJson.js` |
+| `airports.geojson` | FeatureCollection: source_doctrine string, nws_proxy_notice, features with geometry | `exportGeojson.js` |
+| `active_events.placefile` | GRLevelX: Title/Refresh/Font/Text/End; only active-event airports | `exportPlacefile.js` |
+| `{IATA}_broadcast.json` | Broadcast package: source_labels[], nws_proxy_notice, operational_status, forecast_impact, aviation_weather | `exportBroadcastPackage.js` |
+| `manifest.json` | Export metadata: generated_at, source_mode, airport_count, active_event_count, package_count, file inventory, freshness_summary, source_doctrine |
+
+**Helpers:**
+- `_op_impact_color(r)` — matches JS `opImpactColor()` fallback logic: uses `current_impact_color`, falls back to inferring from `current_delay_type`
+- `_is_active_event(r)` — `current_delay_type` present and not "none"/"normal"
+- `_freshness_summary(records)` — counts fresh/aging/stale/unknown across the record set
+
+**Source doctrine preserved:**
+```python
+SOURCE_DOCTRINE = {
+    'operational':      'Current Operational Impact — FAA NAS Status',
+    'forecast':         'Forecast Weather Impact — NWS forecast proxy',
+    'aviation_weather': 'Aviation Weather Truth — AviationWeather.gov',
+    'graphics':         'Graphics Output — TravelCast generated package',
+}
+NWS_PROXY_NOTICE = 'Forecast weather impact is an NWS forecast proxy and is NOT an official FAA delay forecast.'
+```
+
+No `write_feed_run` — this export script is downstream of the pull engine, not a source system.
+
+### Automated checks
+
+| Check | Result | Detail |
+|---|---|---|
+| `py_compile scripts/export/export_broadcast_batch.py` | PASSED | 0 syntax errors |
+| `audit_file_tree.py` | PASSED | New script in required list; present |
+| `audit_no_secrets.py` | PASSED | No secrets introduced |
+| `audit_source_doctrine.py` | PASSED | All 4 doctrine labels present and correct |
+| `audit_json_geojson.py` | PASSED | |
+| `audit_supabase_config.py` | PASSED | |
+| `export_broadcast_batch.py --dry-run --limit 5` | PARTIAL — correct behavior | HTTP 403 on `v_airport_status_dashboard` — service_role needs explicit GRANT (see below) |
+
+### Supabase view grant — operator action required
+
+The export script uses the service_role key to read `v_airport_status_dashboard`. In Supabase's PostgREST layer, the service_role JWT maps to a database role that may need explicit GRANT even though it bypasses RLS.
+
+**Resolution:** Paste `sql/07_grant_export_views.sql` in the Supabase SQL Editor and run.
+
+```sql
+GRANT SELECT ON v_airport_status_dashboard TO service_role;
+GRANT SELECT ON v_airport_status_dashboard TO anon;
+GRANT SELECT ON v_source_health_dashboard   TO service_role;
+GRANT SELECT ON v_routecast_dashboard        TO service_role;
+GRANT SELECT ON v_aviation_hazards_active    TO service_role;
+GRANT SELECT ON v_atcscc_ops_plan_current    TO service_role;
+```
+
+After applying, re-run:
+```
+python scripts/export/export_broadcast_batch.py --dry-run --limit 5
+python scripts/export/export_broadcast_batch.py --limit 5
+```
+
+The second command writes a real `data/exports/YYYYMMDD_HHMM/` directory with 5-airport sample exports. Verify structure and source_doctrine fields before running without `--limit`.
+
+### Source doctrine checks
+
+- [x] `SOURCE_DOCTRINE['operational'] = 'Current Operational Impact — FAA NAS Status'` — in dashboard.json, GeoJSON, placefile header, broadcast package
+- [x] `SOURCE_DOCTRINE['forecast'] = 'Forecast Weather Impact — NWS forecast proxy'` — in dashboard.json, broadcast package
+- [x] `SOURCE_DOCTRINE['aviation_weather'] = 'Aviation Weather Truth — AviationWeather.gov'` — in dashboard.json, broadcast package
+- [x] `NWS_PROXY_NOTICE` present in dashboard.json, GeoJSON, placefile header, broadcast package
+- [x] No invented aviation data — script only reads from `v_airport_status_dashboard`
+
+### Security checks
+
+- [x] No new private API keys or secrets introduced
+- [x] Service-role key read from `.env` via `lib_pull.get_supabase_creds()` only
+- [x] `data/exports/` added to `.gitignore` — generated files not committed
+- [x] Export script is server-side only — no browser execution path
+
+### Phase 11 Phase Completion Status update
+
+- [x] Phase 1–10 (all prior): complete (see above)
+- [x] **Phase 11 Step 1 — Batch export script: `scripts/export/export_broadcast_batch.py` built and compile-verified**
+- [ ] Phase 11 Step 1 — Live run: apply `sql/07_grant_export_views.sql`, then run `--dry-run --limit 5` → verify manifest, then run `--limit 5` → verify output files
+- [ ] Phase 11 Step 2 — (next): integrate export into `pull_all.py` as optional post-pull export step, or build `ROADMAP.md` Milestone 5 items

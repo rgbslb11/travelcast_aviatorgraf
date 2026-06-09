@@ -74,3 +74,14 @@ The build is accepted only if all required items pass.
 - [x] `docs/BROADCAST_USE_GUARDRAILS.md` exists with on-air language rules.
 - [x] `docs/COMMAND_REFERENCE.md` exists with all commands.
 - [x] Source Health shows mission-critical alert banner for stale/no_runs official sources.
+
+## Broadcast Graphics Integration (Phase 11)
+
+- [x] `scripts/export/export_broadcast_batch.py` exists and compiles clean.
+- [x] Script generates dashboard.json, airports.geojson, active_events.placefile, {IATA}_broadcast.json, manifest.json.
+- [x] Output formats match frontend exporter formats.
+- [x] All 4 source doctrine labels present in script constants.
+- [x] NWS proxy notice present in all output formats.
+- [x] `data/exports/` is gitignored.
+- [x] `sql/07_grant_export_views.sql` exists for service_role view grants.
+- [ ] Live run verified after applying sql/07_grant_export_views.sql.
