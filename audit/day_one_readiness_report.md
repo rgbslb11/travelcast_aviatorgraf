@@ -1231,6 +1231,7 @@ Enrichment and commercial sources (tier 2/3) do NOT trigger this alert — only 
 - [x] **Phase 10 — Hardening and Runbook: COMPLETE → Product Ready for Repeatable Local Operations**
 - [x] **Phase 10 Hotfix — ATCSCC dual feed_run: `atcscc_advisories` and `atcscc_ops_plan` now written separately**
 - [x] **Phase 11 Step 1 — Batch export script live-verified (2026-06-09): 71 airports, LAS_broadcast.json, source_mode=live, doctrine and NWS proxy notice confirmed in manifest**
+- [x] **Phase 11 Step 2 — pull_all.py export integration: --export / --export-limit / --export-all flags; dry-run verified (no files written); export_ok in summary (2026-06-20)**
 
 ---
 
@@ -1395,8 +1396,42 @@ Verified by operator after `sql/07_grant_export_views.sql` was applied.
 
 `data/exports/` is gitignored — generated files not committed.
 
+---
+
+## Phase 11 Step 2 — pull_all.py Export Integration (2026-06-20)
+
+### Changes
+
+| File | Change |
+|---|---|
+| `scripts/pull/pull_all.py` | Added `--export`, `--export-limit N`, `--export-all` flags; optional export step after routecast enrichment; `export_ok` in `pull_all_complete` summary |
+
+### Flag behavior
+
+| Flag | Effect |
+|---|---|
+| `--export` | Triggers `export_broadcast_batch.py` after pulls complete |
+| `--export-limit N` | Passes `--limit N` to the export script |
+| `--export-all` | Passes `--all` to export script (all airports, not just active-event) |
+| `--dry-run --export` | Export script receives `--dry-run` — no files written |
+
+Export failure does not affect `pull_all.py` exit code. `export_ok` is `null` when `--export` is not set.
+
+### Verification results (2026-06-20)
+
+| Command | Result |
+|---|---|
+| `py_compile scripts/pull/pull_all.py` | PASSED |
+| `py_compile scripts/export/export_broadcast_batch.py` | PASSED |
+| `pull_all.py --dry-run` (baseline) | PASSED — 6/6 scripts, `export_ok: null` (flag not set) |
+| `pull_all.py --dry-run --export --export-limit 5` | PASSED — 6/6 scripts, `export_start` logged with `args: ["--dry-run", "--limit", "5"]`, `export_done` in 0.34s, `export_ok: true` |
+| No new files in `data/exports/` after dry-run | CONFIRMED — only pre-existing `20260609_0647/` directory present |
+| `audit_no_secrets.py` | PASSED |
+| `audit_source_doctrine.py` | PASSED |
+| `audit_file_tree.py` | PASSED |
+
 ### Phase 11 Phase Completion Status update
 
 - [x] Phase 1–10 (all prior): complete (see above)
 - [x] **Phase 11 Step 1 — Batch export script: `scripts/export/export_broadcast_batch.py` built, compile-verified, and live-verified (2026-06-09)**
-- [ ] Phase 11 Step 2 — (pending Gary approval): integrate batch export into `pull_all.py` as optional post-pull export step
+- [x] **Phase 11 Step 2 — pull_all.py export integration: `--export`, `--export-limit N`, `--export-all` flags; dry-run verified; export_ok in summary (2026-06-20)**

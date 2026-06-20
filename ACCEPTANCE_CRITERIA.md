@@ -85,3 +85,4 @@ The build is accepted only if all required items pass.
 - [x] `data/exports/` is gitignored.
 - [x] `sql/07_grant_export_views.sql` exists for service_role view grants.
 - [x] Live run verified after applying sql/07_grant_export_views.sql (2026-06-09: 71 airports fetched, 5-airport live run, LAS_broadcast.json generated, source_mode=live, doctrine and NWS proxy notice confirmed in manifest).
+- [x] pull_all.py --export integration: --export, --export-limit N, --export-all flags added; export failure does not affect pull exit code; dry-run verified (no files written); export_ok reported in pull_all_complete summary.

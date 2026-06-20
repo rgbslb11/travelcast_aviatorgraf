@@ -12,8 +12,12 @@ Execution order (main scripts):
 Optional enrichment (runs after main scripts, failure does not affect exit code):
   7. rebuild_routecast_snapshots.py      (RouteCast context builder — requires Supabase)
 
+Optional post-pull export (runs last, failure does not affect exit code):
+  8. export_broadcast_batch.py           (batch broadcast package export — requires --export flag)
+
 Usage:
   python pull_all.py [--dry-run] [--limit N] [--skip-rebuild] [--skip-routecast]
+                     [--export] [--export-limit N] [--export-all]
 """
 from __future__ import annotations
 import argparse, subprocess, sys, time
@@ -33,6 +37,7 @@ REBUILD_SCRIPT = 'rebuild_airport_status_snapshots.py'
 ROUTECAST_SCRIPT = 'rebuild_routecast_snapshots.py'
 
 PULL_DIR = Path(__file__).parent
+EXPORT_SCRIPT = PULL_DIR.parent / 'export' / 'export_broadcast_batch.py'
 
 
 def run(script: str, extra_args: list[str]) -> tuple[bool, float]:
@@ -57,11 +62,17 @@ def main() -> None:
                         help='Skip rebuild_airport_status_snapshots.py after individual pulls')
     parser.add_argument('--skip-routecast', action='store_true',
                         help='Skip the optional rebuild_routecast_snapshots.py enrichment step')
+    parser.add_argument('--export', action='store_true',
+                        help='Run export_broadcast_batch.py after pulls complete')
+    parser.add_argument('--export-limit', type=int, default=None, metavar='N',
+                        help='Limit export to N airports (passed to export_broadcast_batch.py)')
+    parser.add_argument('--export-all', action='store_true',
+                        help='Export individual packages for all airports, not just active-event airports')
     args = parser.parse_args()
 
     load_env()
     start = utc_now()
-    log('pull_all_start', {'dry_run': args.dry_run, 'limit': args.limit})
+    log('pull_all_start', {'dry_run': args.dry_run, 'limit': args.limit, 'export': args.export})
 
     # Build shared extra args list (dry-run and limit apply to all scripts)
     shared: list[str] = []
@@ -102,7 +113,34 @@ def main() -> None:
             routecast_ok = False
             log('routecast_enrichment_error', {'error': str(exc), 'note': 'optional step — main run not affected'})
 
-    # Summary (main scripts only — routecast is excluded from pass/fail counts)
+    # Optional post-pull export: broadcast batch
+    # Failure does NOT affect the pull_all exit code.
+    export_ok: bool | None = None
+    if args.export:
+        export_args: list[str] = []
+        if args.dry_run:
+            export_args.append('--dry-run')
+        if args.export_limit is not None:
+            export_args += ['--limit', str(args.export_limit)]
+        if args.export_all:
+            export_args.append('--all')
+        log('export_start', {'script': str(EXPORT_SCRIPT.name), 'args': export_args})
+        t0 = time.monotonic()
+        try:
+            result = subprocess.run([sys.executable, str(EXPORT_SCRIPT)] + export_args)
+            elapsed = round(time.monotonic() - t0, 2)
+            export_ok = result.returncode == 0
+            if export_ok:
+                log('export_done', {'script': EXPORT_SCRIPT.name, 'elapsed_s': elapsed, 'dry_run': args.dry_run})
+            else:
+                log('export_failed', {'script': EXPORT_SCRIPT.name, 'elapsed_s': elapsed,
+                                      'returncode': result.returncode,
+                                      'note': 'optional step — pull results not affected'})
+        except Exception as exc:
+            export_ok = False
+            log('export_error', {'error': str(exc), 'note': 'optional step — pull results not affected'})
+
+    # Summary (main scripts only — routecast and export are excluded from pass/fail counts)
     passed = [s for s, r in results.items() if r['ok']]
     failed = [s for s, r in results.items() if not r['ok']]
     total_elapsed = sum(r['elapsed_s'] for r in results.values())
@@ -117,6 +155,7 @@ def main() -> None:
         'failed_scripts': failed,
         'dry_run': args.dry_run,
         'routecast_enrichment_ok': routecast_ok,
+        'export_ok': export_ok,
     })
 
     if failed:

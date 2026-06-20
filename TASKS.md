@@ -109,4 +109,10 @@
 - [x] Operator: applied sql/07_grant_export_views.sql in Supabase SQL Editor
 - [x] Live dry-run: python scripts/export/export_broadcast_batch.py --dry-run --limit 5 — PASSED (71 airports, 5-airport dry-run, LAS active event identified)
 - [x] Live run: python scripts/export/export_broadcast_batch.py --limit 5 — PASSED (dashboard.json, airports.geojson, active_events.placefile, LAS_broadcast.json, manifest.json written; source_mode=live; doctrine and NWS proxy notice confirmed in manifest)
-- [ ] (next) Integrate batch export into pull_all.py as optional post-pull step (Phase 14 Step 2) — pending Gary approval
+- [x] Phase 14 Step 2 — Integrate batch export into pull_all.py as optional post-pull step
+  - --export flag triggers export_broadcast_batch.py after pulls complete
+  - --export-limit N passes --limit N to export script
+  - --export-all passes --all to export script
+  - --dry-run --export triggers export in dry-run mode (no files written)
+  - export failure does not affect pull_all exit code
+  - export_ok reported in pull_all_complete summary event
