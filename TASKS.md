@@ -100,13 +100,13 @@
 - [x] README.md updated to reflect current status.
 - [x] All audit checks pass at Phase 10 level.
 
-## Phase 14 — Broadcast Graphics Integration (in progress)
+## Phase 14 — Broadcast Graphics Integration (Step 1 complete)
 
 - [x] scripts/export/export_broadcast_batch.py — batch export script reading v_airport_status_dashboard
 - [x] sql/07_grant_export_views.sql — GRANT SELECT on all dashboard views to service_role
 - [x] .gitignore: data/exports/ excluded
 - [x] audit_file_tree.py: export script added to required list
-- [ ] Operator: apply sql/07_grant_export_views.sql in Supabase SQL Editor
-- [ ] Live dry-run: python scripts/export/export_broadcast_batch.py --dry-run --limit 5
-- [ ] Live run: python scripts/export/export_broadcast_batch.py --limit 5 → verify output files
-- [ ] (next) Integrate batch export into pull_all.py as optional post-pull step (Phase 14 Step 2)
+- [x] Operator: applied sql/07_grant_export_views.sql in Supabase SQL Editor
+- [x] Live dry-run: python scripts/export/export_broadcast_batch.py --dry-run --limit 5 — PASSED (71 airports, 5-airport dry-run, LAS active event identified)
+- [x] Live run: python scripts/export/export_broadcast_batch.py --limit 5 — PASSED (dashboard.json, airports.geojson, active_events.placefile, LAS_broadcast.json, manifest.json written; source_mode=live; doctrine and NWS proxy notice confirmed in manifest)
+- [ ] (next) Integrate batch export into pull_all.py as optional post-pull step (Phase 14 Step 2) — pending Gary approval

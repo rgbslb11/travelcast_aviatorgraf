@@ -84,4 +84,4 @@ The build is accepted only if all required items pass.
 - [x] NWS proxy notice present in all output formats.
 - [x] `data/exports/` is gitignored.
 - [x] `sql/07_grant_export_views.sql` exists for service_role view grants.
-- [ ] Live run verified after applying sql/07_grant_export_views.sql.
+- [x] Live run verified after applying sql/07_grant_export_views.sql (2026-06-09: 71 airports fetched, 5-airport live run, LAS_broadcast.json generated, source_mode=live, doctrine and NWS proxy notice confirmed in manifest).

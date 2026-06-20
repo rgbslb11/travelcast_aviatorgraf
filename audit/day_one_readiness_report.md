@@ -1230,6 +1230,7 @@ Enrichment and commercial sources (tier 2/3) do NOT trigger this alert — only 
 - [x] **Phase 9 — Operational Intelligence Audit: PASSED → Operational Intelligence Audit Passed — Local Prep Usable**
 - [x] **Phase 10 — Hardening and Runbook: COMPLETE → Product Ready for Repeatable Local Operations**
 - [x] **Phase 10 Hotfix — ATCSCC dual feed_run: `atcscc_advisories` and `atcscc_ops_plan` now written separately**
+- [x] **Phase 11 Step 1 — Batch export script live-verified (2026-06-09): 71 airports, LAS_broadcast.json, source_mode=live, doctrine and NWS proxy notice confirmed in manifest**
 
 ---
 
@@ -1346,30 +1347,12 @@ No `write_feed_run` — this export script is downstream of the pull engine, not
 | `audit_source_doctrine.py` | PASSED | All 4 doctrine labels present and correct |
 | `audit_json_geojson.py` | PASSED | |
 | `audit_supabase_config.py` | PASSED | |
-| `export_broadcast_batch.py --dry-run --limit 5` | PARTIAL — correct behavior | HTTP 403 on `v_airport_status_dashboard` — service_role needs explicit GRANT (see below) |
+| `export_broadcast_batch.py --dry-run --limit 5` | PASSED | 71 airports fetched; 5-airport dry-run; LAS active event identified; manifest printed; no disk writes |
+| `export_broadcast_batch.py --limit 5` (live) | PASSED | dashboard.json, airports.geojson, active_events.placefile, LAS_broadcast.json, manifest.json written to data/exports/20260609_0647/; source_mode=live; doctrine and NWS proxy notice confirmed in manifest |
 
-### Supabase view grant — operator action required
+### Supabase view grant — APPLIED
 
-The export script uses the service_role key to read `v_airport_status_dashboard`. In Supabase's PostgREST layer, the service_role JWT maps to a database role that may need explicit GRANT even though it bypasses RLS.
-
-**Resolution:** Paste `sql/07_grant_export_views.sql` in the Supabase SQL Editor and run.
-
-```sql
-GRANT SELECT ON v_airport_status_dashboard TO service_role;
-GRANT SELECT ON v_airport_status_dashboard TO anon;
-GRANT SELECT ON v_source_health_dashboard   TO service_role;
-GRANT SELECT ON v_routecast_dashboard        TO service_role;
-GRANT SELECT ON v_aviation_hazards_active    TO service_role;
-GRANT SELECT ON v_atcscc_ops_plan_current    TO service_role;
-```
-
-After applying, re-run:
-```
-python scripts/export/export_broadcast_batch.py --dry-run --limit 5
-python scripts/export/export_broadcast_batch.py --limit 5
-```
-
-The second command writes a real `data/exports/YYYYMMDD_HHMM/` directory with 5-airport sample exports. Verify structure and source_doctrine fields before running without `--limit`.
+`sql/07_grant_export_views.sql` was pasted and executed in the Supabase SQL Editor. Service_role and anon grants on all dashboard views are confirmed active.
 
 ### Source doctrine checks
 
@@ -1386,9 +1369,34 @@ The second command writes a real `data/exports/YYYYMMDD_HHMM/` directory with 5-
 - [x] `data/exports/` added to `.gitignore` — generated files not committed
 - [x] Export script is server-side only — no browser execution path
 
+### Phase 11 Step 1 — Live verification (2026-06-09)
+
+Verified by operator after `sql/07_grant_export_views.sql` was applied.
+
+| Command | Result |
+|---|---|
+| `python scripts/export/export_broadcast_batch.py --dry-run --limit 5` | PASSED — 71 airports fetched from `v_airport_status_dashboard`; dry-run limited to 5 airports; active event package identified: LAS_broadcast.json; manifest printed; no disk writes |
+| `python scripts/export/export_broadcast_batch.py --limit 5` | PASSED — live export wrote 5 files |
+
+**Files written to `data/exports/20260609_0647/`:**
+
+| File | Status |
+|---|---|
+| `dashboard.json` | Written |
+| `airports.geojson` | Written |
+| `active_events.placefile` | Written |
+| `LAS_broadcast.json` | Written |
+| `manifest.json` | Written |
+
+**Manifest spot-check:**
+- `source_mode = "live"` — confirmed
+- Source doctrine block — confirmed
+- NWS proxy notice — confirmed
+
+`data/exports/` is gitignored — generated files not committed.
+
 ### Phase 11 Phase Completion Status update
 
 - [x] Phase 1–10 (all prior): complete (see above)
-- [x] **Phase 11 Step 1 — Batch export script: `scripts/export/export_broadcast_batch.py` built and compile-verified**
-- [ ] Phase 11 Step 1 — Live run: apply `sql/07_grant_export_views.sql`, then run `--dry-run --limit 5` → verify manifest, then run `--limit 5` → verify output files
-- [ ] Phase 11 Step 2 — (next): integrate export into `pull_all.py` as optional post-pull export step, or build `ROADMAP.md` Milestone 5 items
+- [x] **Phase 11 Step 1 — Batch export script: `scripts/export/export_broadcast_batch.py` built, compile-verified, and live-verified (2026-06-09)**
+- [ ] Phase 11 Step 2 — (pending Gary approval): integrate batch export into `pull_all.py` as optional post-pull export step
