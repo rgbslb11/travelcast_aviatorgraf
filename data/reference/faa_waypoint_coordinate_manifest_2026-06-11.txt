@@ -1,0 +1,9 @@
+FAA waypoint coordinate extraction manifest
+NASR cycle: 2026-06-11
+Unique identifiers extracted: 363
+Coordinate match rows: 359
+Procedure-base derived rows: 28
+Unresolved/non-coordinate labels: 93
+Output XLSX: /mnt/data/faa_waypoint_coordinates_2026-06-11.xlsx
+Output CSV: /mnt/data/faa_waypoint_coordinates_all_matches_2026-06-11.csv
+Unresolved CSV: /mnt/data/faa_route_labels_unresolved_or_noncoordinate_2026-06-11.csv

@@ -69,6 +69,7 @@ DEFAULT_GEOMETRY_STATUS = 'needs_validation'
 # ─── Default search paths ─────────────────────────────────────────────────────
 
 DEFAULT_SOURCE_PATHS: list[Path] = [
+    ROOT / 'data' / 'reference' / 'routecast_top_50_busiest_aviation_routes_v0_1.csv',
     ROOT / 'data' / 'reference' / 'top_50_routes.csv',
     ROOT / 'data' / 'reference' / 'top_50_busiest_routes.csv',
     ROOT / 'data' / 'reference' / 'routecast_corridors.csv',
@@ -77,6 +78,7 @@ DEFAULT_SOURCE_PATHS: list[Path] = [
 ]
 
 DEFAULT_WAYPOINT_COORD_PATHS: list[Path] = [
+    ROOT / 'data' / 'reference' / 'faa_waypoint_coordinates_all_matches_2026-06-11.csv',
     ROOT / 'data' / 'reference' / 'faa_waypoint_coordinates.csv',
     ROOT / 'data' / 'reference' / 'faa_waypoints.csv',
     ROOT / 'data' / 'reference' / 'waypoint_coordinates.csv',
@@ -84,6 +86,7 @@ DEFAULT_WAYPOINT_COORD_PATHS: list[Path] = [
 ]
 
 DEFAULT_UNRESOLVED_PATHS: list[Path] = [
+    ROOT / 'data' / 'reference' / 'faa_route_labels_unresolved_or_noncoordinate_2026-06-11.csv',
     ROOT / 'data' / 'reference' / 'faa_unresolved_labels.csv',
     ROOT / 'data' / 'reference' / 'unresolved_route_labels.csv',
     ROOT / 'data' / 'reference' / 'unresolved_waypoints.csv',
@@ -120,10 +123,11 @@ WAYPOINTS_COLS = ['waypoints', 'route_waypoints', 'key_waypoints', 'waypoint_lis
 ROUTE_FAMILY_COLS = ['route_family', 'family', 'route_group']
 SOURCE_BASIS_COLS = ['source_basis', 'source', 'data_source', 'basis']
 
-WAYPOINT_LABEL_COLS = ['waypoint', 'fix', 'label', 'name', 'identifier', 'id',
+WAYPOINT_LABEL_COLS = ['input_identifier', 'resolved_identifier',
+                        'waypoint', 'fix', 'label', 'name', 'identifier', 'id',
                         'waypoint_label', 'fix_id']
-LAT_COLS = ['lat', 'latitude', 'lat_dec', 'latitude_dec']
-LON_COLS = ['lon', 'longitude', 'lon_dec', 'long', 'longitude_dec']
+LAT_COLS = ['latitude_dd', 'lat', 'latitude', 'lat_dec', 'latitude_dec']
+LON_COLS = ['longitude_dd', 'lon', 'longitude', 'lon_dec', 'long', 'longitude_dec']
 WP_TYPE_COLS = ['type', 'waypoint_type', 'fix_type']
 
 
@@ -211,13 +215,16 @@ def load_airport_coords() -> dict[str, tuple[float, float]]:
 def parse_waypoints_string(wp_str: str | None) -> list[str]:
     """Parse a waypoint string into individual labels.
 
-    Handles space-separated, comma-separated, or semicolon-separated lists.
+    Handles pipe-separated (LGA|FIX|ORD), comma-separated, semicolon-separated,
+    or space-separated lists.
     Returns empty list if input is None or empty.
     """
     if not wp_str:
         return []
     raw = wp_str.strip()
-    if ',' in raw:
+    if '|' in raw:
+        parts = raw.split('|')
+    elif ',' in raw:
         parts = raw.split(',')
     elif ';' in raw:
         parts = raw.split(';')
