@@ -19,6 +19,13 @@ required = [
     'docs/ATCSCC_PLAYBOOK_ONTOLOGY.md',
     'docs/AVIATION_HAZARD_CORRIDOR_MATCHING.md',
     'docs/C3_SOURCE_DOCTRINE.md',
+    # Phase D1 — Shared Impact Scoring Framework
+    'sql/13_shared_impact_scoring_framework.sql',
+    'scripts/scoring/shared_impact_scoring.py',
+    'scripts/audit/audit_shared_impact_scoring.py',
+    'docs/SHARED_IMPACT_SCORING_FRAMEWORK.md',
+    'docs/IMPACT_SCORE_SOURCE_DOCTRINE.md',
+    'docs/IMPACT_SCORE_GUARDRAILS.md',
 ]
 missing=[x for x in required if not (ROOT/x).exists()]
 if missing:
