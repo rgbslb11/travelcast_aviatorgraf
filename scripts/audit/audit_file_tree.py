@@ -26,6 +26,13 @@ required = [
     'docs/SHARED_IMPACT_SCORING_FRAMEWORK.md',
     'docs/IMPACT_SCORE_SOURCE_DOCTRINE.md',
     'docs/IMPACT_SCORE_GUARDRAILS.md',
+    # Phase D2 — AviaImpact Score v0.1
+    'sql/14_aviaimpact_score_v0_1.sql',
+    'scripts/scoring/aviaimpact_score.py',
+    'scripts/audit/audit_aviaimpact_score.py',
+    'docs/AVIAIMPACT_SCORE_V0_1.md',
+    'docs/AVIAIMPACT_SOURCE_DOCTRINE.md',
+    'docs/AVIAIMPACT_OPERATOR_REVIEW.md',
 ]
 missing=[x for x in required if not (ROOT/x).exists()]
 if missing:
